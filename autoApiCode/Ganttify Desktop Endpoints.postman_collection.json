@@ -1,0 +1,374 @@
+{
+	"info": {
+		"_postman_id": "ed9a248e-e581-4a04-8728-09c3720be24a",
+		"name": "Ganttify Desktop Endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "35125986"
+	},
+	"item": [
+		{
+			"name": "Login_Endpoint",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const DateTimePerformed = new Date();\r",
+							"\r",
+							"// Determines if the given status passes using a code.\r",
+							"// Returns true upon match (pass), false otherwise.\r",
+							"function determinePass(status, passCode){\r",
+							"    if (status == passCode) return true;\r",
+							"    return false;\r",
+							"}\r",
+							"\r",
+							"// Checks for a status 200.\r",
+							"pm.test(\"API Endpoint for Login performed at: \" + DateTimePerformed +  \" | Status Code: \" + pm.response.code + \" | Method: POST \", function(){\r",
+							"\r",
+							"    // Check for HTML response.\r",
+							"    pm.collectionVariables.set(\"Status\", pm.response.code);\r",
+							"    pm.response.to.have.status(200);\r",
+							"    console.log(\"API Endpoint for Login: status test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"// Checks if the response for the register endpoint completes in a timely manner.\r",
+							"pm.test(\"API Endpoint for Login took: \" +  pm.response.responseTime  + \" milliseconds | Method: POST\", function(){\r",
+							"\r",
+							"    pm.expect(pm.response.responseTime).to.be.below(3000); // in milliseconds. Should not be taking more than 3 seconds.\r",
+							"    console.log(\"API Endpoint for Login: response time test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"\r",
+							"// Export jsonResults as a json.\r",
+							"const jsonResults = {\r",
+							"\r",
+							"    'apiEndpoint': '/api/login',\r",
+							"    'date': DateTimePerformed.toDateString(),\r",
+							"    'time': DateTimePerformed.toTimeString(),\r",
+							"    'responseTime': pm.response.responseTime + \" ms\",\r",
+							"    'method': 'POST',\r",
+							"    'status': pm.response.code,\r",
+							"    'pass': determinePass(pm.response.code, 200)\r",
+							"}\r",
+							"console.log(jsonResults);"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const getRequest = {\r",
+							"    url: \"https://ganttify-5b581a9c8167.herokuapp.com/api/login\",\r",
+							"    method: \"POST\"\r",
+							"}\r",
+							"\r",
+							"pm.sendRequest(getRequest, (error, response) => {\r",
+							"    console.log(\"Request sent to the API endpoint for login\");\r",
+							"    if (error){console.log(error)}\r",
+							"    pm.test(\"Should not expect to experience any pre-request errors\", function(){\r",
+							"        pm.expect(error).to.equal(null); // Should be error free before proceeding.\r",
+							"    })\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\":\"ashkoltz91@gmail.com\",\r\n    \"password\":\"Pokemon@1\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/login",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Register_Endpoint",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const DateTimePerformed = new Date();\r",
+							"\r",
+							"// Determines if the given status passes using a code.\r",
+							"// Returns true upon match (pass), false otherwise.\r",
+							"function determinePass(status, passCode){\r",
+							"    if (status == passCode) return true;\r",
+							"    return false;\r",
+							"}\r",
+							"\r",
+							"// Checks for a status 200.\r",
+							"pm.test(\"API Endpoint for Register performed at: \" + DateTimePerformed +  \" | Status Code: \" + pm.response.code + \" | Method: POST \", function(){\r",
+							"\r",
+							"    // Check for HTML response.\r",
+							"    pm.response.to.have.status(201);\r",
+							"    console.log(\"API Endpoint for Register: status test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"// Checks if the response for the register endpoint completes in a timely manner.\r",
+							"pm.test(\"API Endpoint for Register took: \" +  pm.response.responseTime  + \" milliseconds | Method: POST\", function(){\r",
+							"\r",
+							"    pm.expect(pm.response.responseTime).to.be.below(3000); // in milliseconds. Should not be taking more than 3 seconds.\r",
+							"    console.log(\"API Endpoint for Register: response time test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"// Export jsonResults as a json.\r",
+							"const jsonResults = {\r",
+							"    'apiEndpoint': '/api/register',\r",
+							"    'date': DateTimePerformed.toDateString(),\r",
+							"    'time': DateTimePerformed.toTimeString(),\r",
+							"    'responseTime': pm.response.responseTime + \" ms\",\r",
+							"    'method': 'POST',\r",
+							"    'status': pm.response.code,\r",
+							"    'pass': determinePass(pm.response.code, 201)\r",
+							"}\r",
+							"console.log(jsonResults);"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const getRequest = {\r",
+							"    url: \"https://ganttify-5b581a9c8167.herokuapp.com/api/register\",\r",
+							"    method: \"POST\"\r",
+							"}\r",
+							"\r",
+							"pm.sendRequest(getRequest, (error, response) => {\r",
+							"    console.log(\"Request sent to the API endpoint for registration\");\r",
+							"    if (error){console.log(error)}\r",
+							"    pm.test(\"Should not expect to experience any pre-request errors\", function(){\r",
+							"        pm.expect(error).to.equal(null); // Should be error free before proceeding.\r",
+							"    })\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"email\": \"ashkoltz91@gmail.com\",\r\n    \"name\": \"Team Dark\",\r\n    \"phone\": \"(863) 555-4440\",\r\n    \"username\": \"ShadowRobotnik\",\r\n    \"password\": \"TeamDark@2003\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/register",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Search_Chart_Name_Endpoint",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const DateTimePerformed = new Date();\r",
+							"\r",
+							"// Determines if the given status passes using a code.\r",
+							"// Returns true upon match (pass), false otherwise.\r",
+							"function determinePass(status, passCode){\r",
+							"    if (status == passCode) return true;\r",
+							"    return false;\r",
+							"}\r",
+							"\r",
+							"// Checks for a status 200.\r",
+							"pm.test(\"API Endpoint for Search - Charts performed at: \" + DateTimePerformed +  \" | Status Code: \" + pm.response.code + \" | Method: POST \", function(){\r",
+							"\r",
+							"    // Check for HTML response.\r",
+							"    pm.response.to.have.status(200);\r",
+							"    console.log(\"API Endpoint for Search - Charts: status test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"// Checks if the response for the register endpoint completes in a timely manner.\r",
+							"pm.test(\"API Endpoint for Search - Charts took: \" +  pm.response.responseTime  + \" milliseconds | Method: POST\", function(){\r",
+							"\r",
+							"    pm.expect(pm.response.responseTime).to.be.below(3000); // in milliseconds. Should not be taking more than 3 seconds.\r",
+							"    console.log(\"API Endpoint for Search - Charts: response time test performed.\")\r",
+							"\r",
+							"});\r",
+							"\r",
+							"// Export jsonResults as a json.\r",
+							"const jsonResults = {\r",
+							"    'apiEndpoint': '/api/search/projects',\r",
+							"    'date': DateTimePerformed.toDateString(),\r",
+							"    'time': DateTimePerformed.toTimeString(),\r",
+							"    'responseTime': pm.response.responseTime + \" ms\",\r",
+							"    'method': 'POST',\r",
+							"    'status': pm.response.code,\r",
+							"    'pass': determinePass(pm.response.code, 200)\r",
+							"}\r",
+							"console.log(jsonResults);"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const getRequest = {\r",
+							"    url: \"https://ganttify-5b581a9c8167.herokuapp.com/api/search/projects\",\r",
+							"    method: \"POST\"\r",
+							"};\r",
+							"\r",
+							"pm.sendRequest(getRequest, (error, response) => {\r",
+							"    console.log(\"Request sent to the API endpoint for searching projects by name in the user dashboard\");\r",
+							"    if (error){console.log(error)}\r",
+							"    pm.test(\"Should not expect to experience any pre-request errors\", function(){\r",
+							"        pm.expect(error).to.equal(null); // Should be error free before proceeding.\r",
+							"    })\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"title\": \"silver\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/search/projects",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"search",
+						"projects"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// Reset.\r",
+					"// pm.collectionVariables.set(\"API_Endpoint\", \"\");\r",
+					"// pm.collectionVariables.set(\"Date\", \"\");\r",
+					"// pm.collectionVariables.set(\"Time\", \"\");\r",
+					"// pm.collectionVariables.set(\"Method\", \"POST\");\r",
+					"// pm.collectionVariables.set(\"Status Code\", pm.response.code);"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// const jsonResult = {\r",
+					"//     'apiEndpoint': pm.collectionVariables.get(\"API_Endpoint\"),\r",
+					"//     'date': pm.collectionVariables.get(\"Date\"),\r",
+					"//     'time': pm.collectionVariables.get(\"Time\"),\r",
+					"//     'method': pm.collectionVariables.get(\"Method\"),\r",
+					"//     'statusCode': pm.collectionVariables.get(\"Status Code\")\r",
+					"// }\r",
+					"\r",
+					"// console.log(jsonResult);"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://ganttify-5b581a9c8167.herokuapp.com",
+			"type": "string"
+		},
+		{
+			"key": "API_Endpoint",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "Date",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "Time",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "Method",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "Status",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "Pass",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
