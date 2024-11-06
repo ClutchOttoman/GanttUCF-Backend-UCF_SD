@@ -12,7 +12,59 @@ const app = express();
 app.set('port', PORT);
 app.use(express.json());
 app.use(cors());
+var namespace = `${db}.${coll}`;
+// start-kmsproviders
+const fs = require("fs");
+const provider = "local";
+const path = "./master-key.txt";
+const localMasterKey = fs.readFileSync(path);
+const kmsProviders = {
+  local: {
+    key: localMasterKey,
+  },
+};
+// end-kmsproviders
+const userAccount = {
+	bsonType: "object",
+  encryptMetadata: {
+    keyId: [new Binary(Buffer.from(url, "base64"), 4)],
+  },
+	properties:{
 
+
+		email:{encrypt:{
+			bsonType: "String",
+			algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+		},}
+		name:{encrypt:{
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+		phone:{encrypt:{ 
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+		password:{encrypt:{
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+      username:{
+                        bsonType: "String",
+                },
+
+      accountCreated:{
+	      bsonType: "Date",
+      },
+		isEmailVerified:{
+			bsonType:"Boolean",
+		}
+		projects: {bsonType:"Array",},
+      toDoList:{
+      	bsonType:"Array",},
+      }
+
+	}
+}
 let client;
 (async () => {
   try {
@@ -27,7 +79,7 @@ const secureClient = new MongoClient(url, {
   autoEncryption: {
     ,
     kmsProviders,
-    schemaMap: patientSchema,
+    schemaMap: userAccount,
     extraOptions: extraOptions,
   },
 });
