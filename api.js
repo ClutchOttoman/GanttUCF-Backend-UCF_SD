@@ -19,6 +19,47 @@ let client;
     console.error("MongoDB connection error:", err);
   }
 })();
+const userAccount = {
+	bsonType: "object",
+  encryptMetadata: {
+    keyId: [new Binary(Buffer.from(url, "base64"), 4)],
+  },
+	properties:{
+
+
+		email:{encrypt:{
+			bsonType: "String",
+			algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+		},}
+		name:{encrypt:{
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+		phone:{encrypt:{ 
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+		password:{encrypt:{
+                        bsonType: "String",
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+
+      username:{
+                        bsonType: "String",
+                },
+
+      accountCreated:{
+	      bsonType: "Date",
+      },
+		isEmailVerified:{
+			bsonType:"Boolean",
+		}
+		projects: {bsonType:"Array",},
+      toDoList:{
+      	bsonType:"Array",},
+      }
+
+	}
+}
 
 
 //-----------------> Register Endpoint <-----------------//
@@ -61,7 +102,7 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + hashedPassword;
     const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
 
-    let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-email/${email}/${token}`;
+    let link = `http://206.81.1.248/verify-email/${email}/${token}`;
 
     const transporter = nodeMailer.createTransport({
       service: 'gmail',
@@ -256,7 +297,7 @@ router.post("/login", async (req, res) => {
       transporter.sendMail(mailDetails, function (err, data) {
         if (err) {
           return res.status(500).json({ error: 'Error sending verification email' });
-        } else {
+        } else  {
           return res.status(400).json({ error: 'Email not verified. Verification email sent again.' });
         }
       });
@@ -269,8 +310,7 @@ router.post("/login", async (req, res) => {
       error = "Invalid email or password";
       return res.status(401).json({ error });
     }
-
-
+	console.log("successful login");
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
     res.status(200).json({
       token,
