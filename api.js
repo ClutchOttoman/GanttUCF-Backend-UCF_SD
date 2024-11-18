@@ -19,6 +19,7 @@ let client;
     console.error("MongoDB connection error:", err);
   }
 })();
+/*
 const userAccount = {
 	bsonType: "object",
   encryptMetadata: {
@@ -30,18 +31,18 @@ const userAccount = {
 		email:{encrypt:{
 			bsonType: "String",
 			algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-		},}
+		},},
 		name:{encrypt:{
                         bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
 
 		phone:{encrypt:{ 
                         bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
 
 		password:{encrypt:{
                         bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",}
+                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
 
       username:{
                         bsonType: "String",
@@ -52,14 +53,14 @@ const userAccount = {
       },
 		isEmailVerified:{
 			bsonType:"Boolean",
-		}
+		},
 		projects: {bsonType:"Array",},
       toDoList:{
       	bsonType:"Array",},
       }
 
 	}
-}
+}*/
 
 
 //-----------------> Register Endpoint <-----------------//

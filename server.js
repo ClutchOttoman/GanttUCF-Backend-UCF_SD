@@ -23,14 +23,15 @@ let client;
     console.error('MongoDB connection error:', err);
   }
 })();
-const secureClient = new MongoClient(url, {
+/*const secureClient = new MongoClient(url, {
   autoEncryption: {
-    ,
+    
     kmsProviders,
     schemaMap: patientSchema,
     extraOptions: extraOptions,
   },
 });
+*/
 
 const apiRouter = require("./api");
 app.use("/api", apiRouter);
