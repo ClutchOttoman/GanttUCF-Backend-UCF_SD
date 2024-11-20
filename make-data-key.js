@@ -20,7 +20,7 @@ const kms_providers = {
 
 // Generate key.
 async function main(){
-  const uri_string = "process.env.MONGO_DB_URI";
+  const uri_string = "process.env.MONGO_URI";
 
   // Set up the database and collection containing key.
   const master_key_database_name = "keys_database";
