@@ -46,7 +46,7 @@ async function main(){
   const masterKeyGenerateClient = new MongoClient(uri);
   await masterKeyGenerateClient.connect();
   const encrypt = new ClientEncryption(masterKeyGenerateClient, {keyVaultNamespace, kmsProviders});
-  const key = await encrypt.createDataKey("provider");
+  const key = await encrypt.createDataKey(provider);
   console.log("Key generated: [base64]:", key.toString("base64") );
 
   // Close services when done.
