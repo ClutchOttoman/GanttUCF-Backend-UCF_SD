@@ -3,6 +3,10 @@
 const {MongoClient, Binary, ClientEncryption} = require("mongodb");
 const file = require("fs");
 const crypto = require("crypto");
+const path = require('path');
+require('dotenv').config();
+const PORT = process.env.PORT || 5000;
+const uri = process.env.MONGODB_URI;
 
 // Create text file to store master key.
 try {
@@ -20,13 +24,12 @@ const kms_providers = {
 
 // Generate key.
 async function main(){
-  const uri_string = "process.env.MONGO_URI";
 
   // Set up the database and collection containing key.
   const master_key_database_name = "keys_database";
   const master_key_collection_name = "key_collection";
   const master_key_namespace = '${master_key_database_name}.${master_key_collection_name}';
-  const master_key_client = new MongoClient(uri_string);
+  const master_key_client = new MongoClient(uri);
   await master_key_client.connect();
   const master_key_client_database = master_key_client.collection(master_key_collection_name);
 
@@ -36,7 +39,7 @@ async function main(){
   );
 
   // Generate key.
-  const master_key_generate = new MongoClient(uri_string);
+  const master_key_generate = new MongoClient(uri);
   await master_key_generate.connect();
   const encrypt = new ClientEncryption(master_key_generate, {master_key_namespace, kms_providers});
   const generated_key = await encrypt.createDataKey("local");
