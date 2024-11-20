@@ -16,38 +16,42 @@ try {
 }
 
 const provider = "local";
-const save_path = "./csfle-master-key.txt";
-const master_local_key = file.readFileSync(save_path);
-const kms_providers = {
-  local: {key: master_local_key,},
+const savePath = "./csfle-master-key.txt";
+const masterLocalKey = file.readFileSync(savePath);
+const kmsProviders = {
+  local: {key: masterLocalKey,},
 };
 
 // Generate key.
 async function main(){
 
   // Set up the database and collection containing key.
-  const master_key_database_name = "keys_database";
-  const master_key_collection_name = "key_collection";
-  const master_key_namespace = '${master_key_database_name}.${master_key_collection_name}';
-  const master_key_client = new MongoClient(uri);
-  await master_key_client.connect();
-  const master_key_client_database = master_key_client.collection(master_key_collection_name);
+  const masterKeyDatabaseName = "encrypt_database";
+  const masterKeyCollectionName = "key_collection";
+  const masterKeyNamespace = `${masterKeyDatabaseName}.${masterKeyCollectionName}`;
+  const masterKeyClient = new MongoClient(uri);
+  await masterKeyClient.connect();
+  const masterKeyDatabase = masterKeyClient.db(masterKeyDatabaseName);
+	await masterKeyDatabase.dropDatabase();
+	await masterKeyClient.db("protectUserAccounts").dropDatabase();
+	const masterKeyCollection = masterKeyDatabase.collection(masterKeyCollectionName);
 
-  await master_key_client_database.createIndex(
+  
+  await masterKeyCollection.createIndex(
     {keyAltNames: 1},
     {unique: true, partialExpressionFilter: {keyAltNames: {$exists: true}}},
   );
 
   // Generate key.
-  const master_key_generate = new MongoClient(uri);
-  await master_key_generate.connect();
-  const encrypt = new ClientEncryption(master_key_generate, {master_key_namespace, kms_providers});
-  const generated_key = await encrypt.createDataKey("local");
-  console.log();
+  const masterKeyGenerateClient = new MongoClient(uri);
+  await masterKeyGenerateClient.connect();
+  const encrypt = new ClientEncryption(masterKeyGenerateClient, {masterKeyNamespace, kmsProviders});
+  const key = await encrypt.createDataKey("provider");
+  console.log("Key generated: [base64]:", key.toString("base64") );
 
   // Close services when done.
-  await master_key_client.close();
-  await master_key_generate.close();
+  await masterKeyClient.close();
+  await masterKeyGenerateClient.close();
   
 }
 
