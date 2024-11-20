@@ -28,7 +28,7 @@ async function main(){
   // Set up the database and collection containing key.
   const masterKeyDatabaseName = "encrypt_database";
   const masterKeyCollectionName = "key_collection";
-  const masterKeyNamespace = `${masterKeyDatabaseName}.${masterKeyCollectionName}`;
+  const keyVaultNamespace = `${masterKeyDatabaseName}.${masterKeyCollectionName}`;
   const masterKeyClient = new MongoClient(uri);
   await masterKeyClient.connect();
   const masterKeyDatabase = masterKeyClient.db(masterKeyDatabaseName);
@@ -45,7 +45,7 @@ async function main(){
   // Generate key.
   const masterKeyGenerateClient = new MongoClient(uri);
   await masterKeyGenerateClient.connect();
-  const encrypt = new ClientEncryption(masterKeyGenerateClient, {masterKeyNamespace, kmsProviders});
+  const encrypt = new ClientEncryption(masterKeyGenerateClient, {keyVaultNamespace, kmsProviders});
   const key = await encrypt.createDataKey("provider");
   console.log("Key generated: [base64]:", key.toString("base64") );
 
