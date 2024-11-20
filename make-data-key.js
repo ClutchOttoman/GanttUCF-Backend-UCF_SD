@@ -7,7 +7,7 @@ const crypto = require("crypto");
 // Create text file to store master key.
 try {
   file.writeFileSync("csfle-master-key.txt", crypto.randomBytes(96));
-catch (error){
+} catch (error){
   console.error(error);
 }
 
