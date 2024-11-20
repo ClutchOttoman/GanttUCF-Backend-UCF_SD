@@ -16,8 +16,8 @@ try {
 }
 
 const provider = "local";
-const path = "./csfle-master-key.txt";
-const master_local_key = file.readFileSync(path);
+const save_path = "./csfle-master-key.txt";
+const master_local_key = file.readFileSync(save_path);
 const kms_providers = {
   local: {key: master_local_key,},
 };
