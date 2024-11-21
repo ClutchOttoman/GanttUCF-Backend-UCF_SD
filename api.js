@@ -113,7 +113,7 @@ router.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
+	  console.log("Inside register API: password has been hashed.");
     const newUser = {
 	    email,
 	    name,
@@ -133,7 +133,7 @@ router.post("/register", async (req, res) => {
 	  // secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
     await userCollection.insertOne(newUser)
-
+console.log("Data from user should be encrypted.");
     const secret = process.env.JWT_SECRET + hashedPassword;
     const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
 
