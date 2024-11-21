@@ -25,54 +25,65 @@ let client;
 })();
 
 // Set up secure client.
+// Secure client is for user account sensitive information.
+
+var database_name = "ganttify";
+var secure_collection = "protectUserAccount";
+var secure_namespace = `${database_name}.${secure_collection}`;
+
 const provider = "local";
 const savePath = "./csfle-master-key.txt";
 const masterLocalKey = file.readFileSync(savePath);
 const kmsProviders = {
   local: {key: masterLocalKey,},
 };
-
+const keyVaultNamespace = "encrypt_database.key_collection";
 clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
 
-// Note: AEAD_AES_256_CBC_HMAC_SHA_512-Deterministi must be used since that data needs be changed and queryable.
+// Define account schema.
+// Note: AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic must be used since that data needs be changed and queryable.
 // Sensitive information is encrypted and listed first.
-const userAccountSchema = {
+const schema = {
 bsonType: "object",
 encryptMetadata: {
     keyId: [new Binary(Buffer.from(clientDataKey, "base64"), 4)],
   },
-	properties:
-	{
-		email:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		name:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		phone:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-
-		password:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		organization:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		pronouns:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		timezone:
-			{encrypt:{bsonType: "Date",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		discordAccount:
-			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-		username:
-			{bsonType: "String",},
-		accountCreated:
-			{bsonType: "Date",},
-		isEmailVerified:
-			{bsonType:"Boolean",},
-		projects:
-			{bsonType:"Array",},
-		toDoList:
-			{bsonType:"Array",},
-	}
+        properties:
+        {
+                email:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                name:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                phone:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                password:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                organization:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                pronouns:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                timezone:
+                        {encrypt:{bsonType: "Date",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                discordAccount:
+                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+                username:
+                        {bsonType: "String",},
+                accountCreated:
+                        {bsonType: "Date",},
+                isEmailVerified:
+                        {bsonType:"Boolean",},
+                projects:
+                        {bsonType:"Array",},
+                toDoList:
+                        {bsonType:"Array",},
+        }
 }
 
+userAccountSchema = {};
+userAccountSchema[secure_namespace] = schema;
+
+// Define extraOptions
+const extraOptions = {cryptSharedLibPath: ""};
 
 //-----------------> Register Endpoint <-----------------//
 router.post("/register", async (req, res) => {
@@ -87,6 +98,7 @@ router.post("/register", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
+	  // Start the secure client.
 
   
     const existingUser = await userCollection.findOne({ email });
