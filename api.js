@@ -3,12 +3,16 @@ const { MongoClient, ObjectId, Timestamp } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodeMailer = require("nodemailer");
+const file = require("fs");
+const path = require('path');
+const crypto = require("crypto");
 require("dotenv").config();
 
 
 const router = express.Router();
 const url = process.env.MONGODB_URI;
 
+// Regular client.
 let client;
 (async () => {
   try {
@@ -19,48 +23,55 @@ let client;
     console.error("MongoDB connection error:", err);
   }
 })();
-/*
-const userAccount = {
-	bsonType: "object",
-  encryptMetadata: {
-    keyId: [new Binary(Buffer.from(url, "base64"), 4)],
+
+// Set up secure client.
+const provider = "local";
+const savePath = "./csfle-master-key.txt";
+const masterLocalKey = file.readFileSync(savePath);
+const kmsProviders = {
+  local: {key: masterLocalKey,},
+};
+
+clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
+
+// Note: AEAD_AES_256_CBC_HMAC_SHA_512-Deterministi must be used since that data needs be changed and queryable.
+// Sensitive information is encrypted and listed first.
+const userAccountSchema = {
+bsonType: "object",
+encryptMetadata: {
+    keyId: [new Binary(Buffer.from(clientDataKey, "base64"), 4)],
   },
-	properties:{
+	properties:
+	{
+		email:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		name:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		phone:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
 
-
-		email:{encrypt:{
-			bsonType: "String",
-			algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-		},},
-		name:{encrypt:{
-                        bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-
-		phone:{encrypt:{ 
-                        bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-
-		password:{encrypt:{
-                        bsonType: "String",
-                },algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-
-      username:{
-                        bsonType: "String",
-                },
-
-      accountCreated:{
-	      bsonType: "Date",
-      },
-		isEmailVerified:{
-			bsonType:"Boolean",
-		},
-		projects: {bsonType:"Array",},
-      toDoList:{
-      	bsonType:"Array",},
-      }
-
+		password:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		organization:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		pronouns:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		timezone:
+			{encrypt:{bsonType: "Date",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		discordAccount:
+			{encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
+		username:
+			{bsonType: "String",},
+		accountCreated:
+			{bsonType: "Date",},
+		isEmailVerified:
+			{bsonType:"Boolean",},
+		projects:
+			{bsonType:"Array",},
+		toDoList:
+			{bsonType:"Array",},
 	}
-}*/
+}
 
 
 //-----------------> Register Endpoint <-----------------//
