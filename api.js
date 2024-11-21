@@ -83,7 +83,12 @@ userAccountSchema = {};
 userAccountSchema[secure_namespace] = schema;
 
 // Define extraOptions
-const extraOptions = {cryptSharedLibPath: ""};
+// Use automatic  encryption.
+const extraOptions = {cryptSharedLibPath: process.env.SHARED_LIB_PATH};
+const secureClient = new MongoClient(url, {
+	autoEncryption: {keyVaultNamespace, kmsProviders,
+	schemaMap: userAccountSchema}});
+
 
 //-----------------> Register Endpoint <-----------------//
 router.post("/register", async (req, res) => {
@@ -96,16 +101,16 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
+   // const db = client.db("ganttify");
+   // const userCollection = db.collection("userAccounts");
 	  // Start the secure client.
-
-  
+	  await secureClient.connect();
+	  const db = secureClient.db("ganttify");
+	  const userCollection = secureClient.db("userAccounts");
     const existingUser = await userCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
     }
-
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -120,6 +125,8 @@ router.post("/register", async (req, res) => {
       projects: [],
       toDoList: [],
     };
+
+	   secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
     await userCollection.insertOne(newUser)
 
