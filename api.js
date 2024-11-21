@@ -1,4 +1,4 @@
-const express = require("express"Object.);
+const express = require("express");
 const { MongoClient, ObjectId, Timestamp, Binary } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
