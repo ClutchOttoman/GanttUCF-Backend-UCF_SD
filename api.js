@@ -84,7 +84,7 @@ userAccountSchema[secure_namespace] = schema;
 
 // Define extraOptions
 // Use automatic  encryption.
-const extraOptions = {cryptSharedLibPath: process.env.SHARED_LIB_PATH};
+// const extraOptions = {cryptSharedLibPath: process.env.SHARED_LIB_PATH};
 const secureClient = new MongoClient(url, {
 	autoEncryption: {keyVaultNamespace, kmsProviders,
 	schemaMap: userAccountSchema}});
@@ -115,15 +115,19 @@ router.post("/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = {
-      email,
-      name,
-      phone,
-      password: hashedPassword,
-      username,
-      accountCreated: new Date(),
-      isEmailVerified: false, 
-      projects: [],
-      toDoList: [],
+	    email,
+	    name,
+	    phone,
+	    password: hashedPassword,
+	    username,
+	    discordAccount: "",
+	    organization: "",
+	    pronouns: "",
+	    timezone: "New York",
+	    accountCreated: new Date(),
+	    isEmailVerified: false, 
+	    projects: [],
+	    toDoList: [],
     };
 
 	   secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
