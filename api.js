@@ -106,7 +106,7 @@ router.post("/register", async (req, res) => {
 	  // Start the secure client.
 	  await secureClient.connect();
 	  const secureDb = secureClient.db("ganttify");
-	  const userCollection = secureDb.collection("userAccount");
+	  const userCollection = secureDb.collection("protectUserAccount");
     const existingUser = await userCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
