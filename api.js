@@ -6,6 +6,7 @@ const nodeMailer = require("nodemailer");
 const file = require("fs");
 const path = require('path');
 const crypto = require("crypto");
+const {ClientEncryption} = require("mongodb-client-encryption");
 require("dotenv").config();
 
 
