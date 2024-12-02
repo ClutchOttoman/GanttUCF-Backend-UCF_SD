@@ -47,9 +47,9 @@ clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
 const schema = {
 bsonType: "object",
 encryptMetadata: {
-    keyId: [new Binary(Buffer.from(clientDataKey, "base64"), 4)],
+    keyId: [Binary.createFromBase64(clientDataKey)],
   },
-        properties:
+	properties:
         {
                 email:
                         {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
