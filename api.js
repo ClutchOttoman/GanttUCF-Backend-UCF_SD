@@ -130,10 +130,9 @@ router.post("/register", async (req, res) => {
 	    projects: [],
 	    toDoList: [],
     };
+	  await secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
-	  // secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
-
-    await userCollection.insertOne(newUser)
+   // await userCollection.insertOne(newUser)
 console.log("Data from user should be encrypted.");
     const secret = process.env.JWT_SECRET + hashedPassword;
     const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
