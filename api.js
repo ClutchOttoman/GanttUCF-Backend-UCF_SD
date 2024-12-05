@@ -1,3 +1,5 @@
+// Adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
+
 const express = require("express");
 const { MongoClient, ObjectId, Timestamp, Binary } = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -107,7 +109,7 @@ router.post("/register", async (req, res) => {
 	  // Start the secure client.
 	  await secureClient.connect();
 	  const secureDb = secureClient.db("ganttify");
-	  const userCollection = secureDb.collection("protectUserAccount");
+	  const userCollection = secureDb.collection("protectUserAccounts");
     const existingUser = await userCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
