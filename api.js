@@ -110,7 +110,7 @@ router.post("/register", async (req, res) => {
 	  await secureClient.connect();
 	  const secureDb = secureClient.db("ganttify");
 	  const userSecureCollection = secureDb.collection("protectUserAccounts");
-    const existingUser = await userCollection.findOne({ email });
+    const existingUser = await userSecureCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
     }
@@ -134,7 +134,7 @@ router.post("/register", async (req, res) => {
     };
 	 // await secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
-   await userSecureCollection.insertOne(newUser)
+   await userSecureCollection.insertOne(newUser);
 console.log("Data from user should be encrypted.");
     const secret = process.env.JWT_SECRET + hashedPassword;
     const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
