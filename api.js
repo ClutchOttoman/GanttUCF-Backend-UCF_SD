@@ -31,7 +31,7 @@ let client;
 // Secure client is for user account sensitive information.
 
 var database_name = "ganttify";
-var secure_collection = "protectUserAccount";
+var secure_collection = "protectUserAccounts";
 var secure_namespace = `${database_name}.${secure_collection}`;
 
 const provider = "local";
@@ -109,7 +109,7 @@ router.post("/register", async (req, res) => {
 	  // Start the secure client.
 	  await secureClient.connect();
 	  const secureDb = secureClient.db("ganttify");
-	  const userCollection = secureDb.collection("protectUserAccounts");
+	  const userSecureCollection = secureDb.collection("protectUserAccounts");
     const existingUser = await userCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
@@ -132,9 +132,9 @@ router.post("/register", async (req, res) => {
 	    projects: [],
 	    toDoList: [],
     };
-	  await secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
+	 // await secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
-   // await userCollection.insertOne(newUser)
+   await userSecureCollection.insertOne(newUser)
 console.log("Data from user should be encrypted.");
     const secret = process.env.JWT_SECRET + hashedPassword;
     const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
