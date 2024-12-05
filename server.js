@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
-const { MongoClient, Binary } = require('mongodb');
+const {MongoClient} = require('mongodb');
 
 const PORT = process.env.PORT || 5000;
 const url = process.env.MONGODB_URI;
