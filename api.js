@@ -29,7 +29,6 @@ let client;
 
 // Set up secure client.
 // Secure client is for user account sensitive information.
-
 var database_name = "ganttify";
 var secure_collection = "protectUserAccounts";
 var secure_namespace = `${database_name}.${secure_collection}`;
@@ -2286,5 +2285,5 @@ router.get("/tasks/:id", async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: "Task not found" });
     }
-
-
+  }
+}	
