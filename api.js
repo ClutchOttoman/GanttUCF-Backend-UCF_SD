@@ -1,7 +1,7 @@
 // Adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 
 const express = require("express");
-const { MongoClient, ObjectId, Timestamp, Binary } = require("mongodb");
+const { MongoClient, ObjectId, Timestamp, Binary, UUID } = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodeMailer = require("nodemailer");
@@ -40,6 +40,8 @@ const masterLocalKey = file.readFileSync(savePath);
 const kmsProviders = {
   local: {key: masterLocalKey,},
 };
+
+var autoEncryptionOptions = {
 const keyVaultNamespace = "encrypt_database.key_collection";
 clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
 
@@ -80,7 +82,7 @@ encryptMetadata: {
                 toDoList:
                         {bsonType:"Array",},
         }
-}
+};
 
 userAccountSchema = {};
 userAccountSchema[secure_namespace] = schema;
@@ -2287,17 +2289,3 @@ router.get("/tasks/:id", async (req, res) => {
     }
 
 
-    res.status(200).json(task);
-
-    
-  } catch (error) {
-    console.error("Error fetching task:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-
-
-
-
-module.exports = router;
