@@ -2266,15 +2266,8 @@ router.put("/tasks/:id/dates", async (req, res) => {
   }
 });
 
-
-
 router.get("/tasks/:id", async (req, res) => {
-
-
   const { id } = req.params;
-
-
-
   try {
 
     const db = client.db("ganttify");
@@ -2289,4 +2282,5 @@ router.get("/tasks/:id", async (req, res) => {
   }
 	
 });
+
 module.exports = router;	
