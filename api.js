@@ -41,7 +41,6 @@ const kmsProviders = {
   local: {key: masterLocalKey,},
 };
 
-var autoEncryptionOptions = {
 const keyVaultNamespace = "encrypt_database.key_collection";
 clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
 
