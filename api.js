@@ -88,10 +88,21 @@ userAccountSchema[secure_namespace] = schema;
 // Define extraOptions
 // Use automatic  encryption.
 // const extraOptions = {cryptSharedLibPath: process.env.SHARED_LIB_PATH};
-const secureClient = new MongoClient(url, {
-	autoEncryption: {keyVaultNamespace, kmsProviders,
-	schemaMap: userAccountSchema}});
+//const secureClient = new MongoClient(url, {
+//	autoEncryption: {keyVaultNamespace, kmsProviders,
+//	schemaMap: userAccountSchema}});
 
+// Secure client.
+let secureClient;
+(async () => {
+  try {
+  secureClient = new MongoClient(url, {autoEncryption: {keyVaultNamespace, kmsProviders,schemaMap: userAccountSchema}});    
+  await secureClient.connect();
+  console.log("Connected to a secure MongoDB client");
+  } catch (err) {
+    console.error("Secure client MongoDB connection error:", err);
+  }
+})();
 
 //-----------------> Register Endpoint <-----------------//
 router.post("/register", async (req, res) => {
@@ -104,13 +115,9 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-   // const db = client.db("ganttify");
-   // const userCollection = db.collection("userAccounts");
-	  // Start the secure client.
-	  await secureClient.connect();
 	  const secureDb = secureClient.db("ganttify");
 	  const userSecureCollection = secureDb.collection("protectUserAccounts");
-    const existingUser = await userSecureCollection.findOne({ email });
+	  const existingUser = await userSecureCollection.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "Email already used" });
     }
@@ -2273,9 +2280,7 @@ router.get("/tasks/:id", async (req, res) => {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const task = await taskCollection.findOne({ _id: new ObjectId(id) });
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
+	  if (!task) {return res.status(404).json({ error: "Task not found" });}
   } catch (error) {
     console.error("Error fetching task:", error);
     res.status(500).json({ error: "Internal server error" });
