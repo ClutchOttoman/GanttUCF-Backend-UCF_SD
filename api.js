@@ -49,7 +49,7 @@ clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
 const schema = {
 bsonType: "object",
 encryptMetadata: {
-    keyId: [Binary.createFromBase64(clientDataKey)],
+    keyId: [new Binary(Buffer.from(clientDataKey, "base64", 4))],
   },
 	properties:
         {
