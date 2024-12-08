@@ -2284,8 +2284,7 @@ router.get("/tasks/:id", async (req, res) => {
   } catch (error) {
     console.error("Error fetching task:", error);
     res.status(500).json({ error: "Internal server error" });
-  }
-	
+  }	
 });
 
 module.exports = router;	
