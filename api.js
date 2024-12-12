@@ -87,11 +87,7 @@ userAccountSchema[secure_namespace] = schema;
 
 // Define extraOptions
 // Use automatic  encryption.
-const extraOptions = {cryptSharedLibPath: "/root/Ganttify/Ganttify-Backend-UCF_SD/mongodb_crypt"};
-//const secureClient = new MongoClient(url, {"};
-//const secureClient = new MongoClient(url, {
-//	autoEncryption: {keyVaultNamespace, kmsProviders,
-//	schemaMap: userAccountSchema}});
+const extraOptions = {cryptSharedLibPath: "/root/Ganttify/Ganttify-Backend-UCF_SD/mongodb_crypt/lib/mongo_crypt_v1.so"};
 
 // Secure client.
 let secureClient;
