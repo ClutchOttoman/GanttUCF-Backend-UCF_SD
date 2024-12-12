@@ -87,7 +87,8 @@ userAccountSchema[secure_namespace] = schema;
 
 // Define extraOptions
 // Use automatic  encryption.
-// const extraOptions = {cryptSharedLibPath: process.env.SHARED_LIB_PATH};
+const extraOptions = {cryptSharedLibPath: "/root/Ganttify/Ganttify-Backend-UCF_SD/mongodb_crypt"};
+//const secureClient = new MongoClient(url, {"};
 //const secureClient = new MongoClient(url, {
 //	autoEncryption: {keyVaultNamespace, kmsProviders,
 //	schemaMap: userAccountSchema}});
@@ -96,7 +97,7 @@ userAccountSchema[secure_namespace] = schema;
 let secureClient;
 (async () => {
   try {
-  secureClient = new MongoClient(url, {autoEncryption: {keyVaultNamespace, kmsProviders,schemaMap: userAccountSchema}});    
+  secureClient = new MongoClient(url, {autoEncryption: {keyVaultNamespace, kmsProviders, schemaMap: userAccountSchema, extraOptions: extraOptions}});    
   await secureClient.connect();
   console.log("Connected to a secure MongoDB client");
   } catch (err) {
