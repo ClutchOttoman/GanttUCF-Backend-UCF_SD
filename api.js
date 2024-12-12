@@ -87,7 +87,7 @@ userAccountSchema[secure_namespace] = schema;
 
 // Define extraOptions
 // Use automatic  encryption.
-const extraOptions = {cryptSharedLibPath: "./mongodb_crypt/lib/mongo_crypt_v1.so"};
+const extraOptions = {cryptSharedLibPath: "/mongodb_crypt/lib/mongo_crypt_v1.so"};
 
 // Secure client.
 let secureClient;
