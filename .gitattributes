@@ -1,1 +1,2 @@
 mongodb_crypt/lib/mongo_crypt_v1.so filter=lfs diff=lfs merge=lfs -text
+dynamic_lib/lib/mongo_crypt_v1.so filter=lfs diff=lfs merge=lfs -text
