@@ -857,9 +857,11 @@ Date.prototype.addDays = function(days) {
     return date;
 }
 
+
+
 // Delete a project
 router.delete("/projects/:id", async (req, res) => {
-  const { id } = req.params;
+  const { id, } = req.params;
   let error = "";
 
   try {
@@ -870,6 +872,11 @@ router.delete("/projects/:id", async (req, res) => {
     const deletedProjectsCollection = db.collection("recently_deleted_projects");
     const deletedTasksCollection = db.collection("recently_deleted_tasks");
     const deletedTeamsCollection = db.collection("recently_deleted_teams");
+    const results = db.collection('userAccounts');
+    const projectEmail = await projectCollection.findOne({ _id: new ObjectId(id) });
+    const user = await results.findOne({_id: projectEmail.founderId});
+
+    const email = user.email;
 
     // Ensure TTL index exists
     await deletedProjectsCollection.createIndex(
@@ -966,7 +973,32 @@ router.delete("/projects/:id", async (req, res) => {
     // Delete the project from the main collection
     await projectCollection.deleteOne({ _id: new ObjectId(id) });
 
-    res.status(200).json({ message: "Project and associated data moved to deleted collections successfully" });
+    // Configure Nodemailer transport
+    const transporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.USER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    // Send an email notification
+    let mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email, 
+      subject: "Project Moved to Recently Deleted",
+      text: `Hello,\n\nYour project "${project.nameProject}" has been moved to the Recently Deleted Projects collection. It will remain there for 30 days before permanent deletion.\n\nBest regards,\nThe Ganttify Team`,
+    };
+
+     transporter.sendMail(mailDetails, (err, info) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error sending email' });
+      } else {
+        return res.status(200).json({ message: 'Project and associated data moved to deleted collections successfully' });
+      }
+    });
+
+    //res.status(200).json({ message: "Project and associated data moved to deleted collections successfully" });
   } catch (error) {
     console.error("Error deleting project:", error);
     error = "Internal server error";
