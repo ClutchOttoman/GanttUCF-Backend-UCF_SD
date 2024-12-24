@@ -1235,6 +1235,40 @@ router.post('/reset-password', async (req, res) =>
   } 
 });
 
+// -----------------> Update a specific user <-----------------//
+router.put("/user/:userId", async (req, res) => {
+  const userId = req.params.userId;
+  const { name, email, phone } = req.body;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+
+    // Validate that the user exists
+    const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Update the user with the new data
+    const updateResult = await userCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { name, email, phone } }
+    );
+    
+    // Fetch the updated user
+    const updatedUser = await userCollection.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { password: 0 } }
+    );
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 //////////////////////
 // SEARCH ENDPOINTS //
 //////////////////////
