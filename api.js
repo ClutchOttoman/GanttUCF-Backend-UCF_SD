@@ -1255,7 +1255,7 @@ router.put("/user/:userId", async (req, res) => {
       { _id: new ObjectId(userId) },
       { $set: { name, email, phone } }
     );
-    
+
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
       { _id: new ObjectId(userId) },
@@ -1268,6 +1268,34 @@ router.put("/user/:userId", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// -----------------> Delete a specific user <-----------------//
+router.delete("/user/:userId", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+
+    // Validate that the user exists
+    const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
+
+    if (deleteResult.deletedCount === 0) {
+      return res.status(400).json({ error: "Failed to delete user" });
+    }
+
+    res.status(200).json({ message: "User account deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 //////////////////////
 // SEARCH ENDPOINTS //
