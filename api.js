@@ -1,34 +1,19 @@
-// Adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
+// CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 
 const express = require("express");
-const { MongoClient, ObjectId, Timestamp, Binary, UUID } = require("mongodb");
+const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodeMailer = require("nodemailer");
 const file = require("fs");
 const path = require('path');
 const crypto = require("crypto");
-const {ClientEncryption} = require("mongodb-client-encryption");
 require("dotenv").config();
-
 
 const router = express.Router();
 const url = process.env.MONGODB_URI;
 
-// Regular client.
-let client;
-(async () => {
-  try {
-    client = new MongoClient(url);
-    await client.connect();
-    console.log("Connected to MongoDB");
-  } catch (err) {
-    console.error("MongoDB connection error:", err);
-  }
-})();
-
-// Set up secure client.
-// Secure client is for user account sensitive information.
+// Set up secure parameters.
 var database_name = "ganttify";
 var secure_collection = "protectUserAccounts";
 var secure_namespace = `${database_name}.${secure_collection}`;
@@ -41,65 +26,23 @@ const kmsProviders = {
 };
 
 const keyVaultNamespace = "encrypt_database.key_collection";
-clientDataKey = "NmIBCKRwRLKW2HQLrNEtsw=="; // base 64.
+const keyId = "<NmIBCKRwRLKW2HQLrNEtsw==>";
 
-// Define account schema.
-// Note: AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic must be used since that data needs be changed and queryable.
-// Sensitive information is encrypted and listed first.
-const schema = {
-bsonType: "object",
-encryptMetadata: {
-    keyId: [new Binary(Buffer.from(clientDataKey, "base64", 4))],
-  },
-	properties:
-        {
-                email:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                name:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                phone:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                password:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                organization:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                pronouns:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                timezone:
-                        {encrypt:{bsonType: "Date",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                discordAccount:
-                        {encrypt:{bsonType: "String",}, algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",},
-                username:
-                        {bsonType: "String",},
-                accountCreated:
-                        {bsonType: "Date",},
-                isEmailVerified:
-                        {bsonType:"Boolean",},
-                projects:
-                        {bsonType:"Array",},
-                toDoList:
-                        {bsonType:"Array",},
-        }
-};
-
-userAccountSchema = {};
-userAccountSchema[secure_namespace] = schema;
-
-// Define extraOptions
-// Use automatic  encryption.
-const extraOptions = {cryptSharedLibPath: "/root/Ganttify/Ganttify-Backend-UCF_SD/dynamic_lib/lib/mongo_crypt_v1.so"};
-
-// Secure client.
-let secureClient;
+// Regular client.
+// Also allows automatic decryption.
+let client;
 (async () => {
   try {
-  secureClient = new MongoClient(url, {autoEncryption: {keyVaultNamespace, kmsProviders, schemaMap: userAccountSchema, extraOptions: extraOptions}});    
-  await secureClient.connect();
-  console.log("Connected to a secure MongoDB client");
+    client = new MongoClient(url, {autoEncryption: {keyVaultNamespace, kmsProviders, bypassAutoEncryption: true, bypassQueryAnalysis: true}});
+    await client.connect();
+    console.log("Connected to MongoDB");
   } catch (err) {
-    console.error("Secure client MongoDB connection error:", err);
+    console.error("MongoDB connection error:", err);
   }
 })();
+
+// For CSFLE explicit encryption.
+const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
 
 //-----------------> Register Endpoint <-----------------//
 router.post("/register", async (req, res) => {
@@ -112,38 +55,68 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-	  const secureDb = secureClient.db("ganttify");
-	  const userSecureCollection = secureDb.collection("protectUserAccounts");
-	  const existingUser = await userSecureCollection.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: "Email already used" });
+
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const tempCollection = db.collection("unverifiedUserAccounts");
+
+    // Ensure that TTL exists.
+    await tempCollection.createIndex(
+      { "accountCreated": 1 },
+      {
+        expireAfterSeconds: 300, // expires in 5 minutes.
+        partialFilterExpression: { "isEmailVerified": false }
+      }
+    );
+
+    // Make an encrypted query against both the temporary and verified databases.
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+	  const existingUser = await userCollection.findOne({email: queryEncryptedEmail });
+    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail });
+
+    // Check if the user already exists in the verified user account database.
+    if (existingUser || existingTempUser) {
+      return res.status(400).json({ error: "Email has already verified or registered." });
     }
 
+    // Hash and encrypt data before adding to the database.
     const hashedPassword = await bcrypt.hash(password, 10);
-	  console.log("Inside register API: password has been hashed.");
-    const newUser = {
-	    email,
-	    name,
-	    phone,
-	    password: hashedPassword,
-	    username,
-	    discordAccount: "",
-	    organization: "",
-	    pronouns: "",
-	    timezone: "New York",
+
+    var enterName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterPhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterPassword = await encryptClient.encrypt(hashedPassword, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var discordAccount = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+	  var organization = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var timezone = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var pronouns = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    
+    const newTempUser = {
+	    email: queryEncryptedEmail,
+	    name: enterName,
+	    phone: enterPhone,
+      username: enterUsername,
+	    password: enterPassword,
+	    discordAccount: discordAccount,
+	    organization: organization,
+	    pronouns: pronouns,
+	    timezone: timezone,
 	    accountCreated: new Date(),
 	    isEmailVerified: false, 
 	    projects: [],
 	    toDoList: [],
     };
-	 // await secureClient.db("ganttify").collection("userAccounts").insertOne(newUser);
 
-   await userSecureCollection.insertOne(newUser);
-console.log("Data from user should be encrypted.");
-    const secret = process.env.JWT_SECRET + hashedPassword;
-    const token = jwt.sign({email: newUser.email}, secret, {expiresIn: "5m",} );
+    // Insert unverified account into temporary collection.
+    await tempCollection.insertOne(newTempUser);
+
+    // For nodemailer.
+    // Should use an encrypted email address.
+    const secret = process.env.JWT_SECRET + enterPassword.toString();
+    const token = jwt.sign({email: email}, secret, {expiresIn: "5m",} );
 
     let link = `http://206.81.1.248/verify-email/${email}/${token}`;
+    //let link = `http://localhost:5173/verify-email/${email}/${token}`; // for testing API localhost purposes only.
 
     const transporter = nodeMailer.createTransport({
       service: 'gmail',
@@ -157,15 +130,15 @@ console.log("Data from user should be encrypted.");
       from: process.env.USER_EMAIL,
       to: email,
       subject: 'Verify Your Ganttify Account',
-      text: `Hello ${newUser.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-      html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
+      text: `Hello ${name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
+      html: `<p>Hello ${name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
     };
 
     transporter.sendMail(mailDetails, function (err, data) {
       if (err) {
-        return res.status(500).json({ error: 'Error sending verification email' });
+        return res.status(500).json({ error: 'Error sending verification email.' });
       } else {
-        return res.status(200).json({ message: 'Verification email sent' });
+        return res.status(200).json({ message: 'Verification email sent.' });
       }
     });
 
@@ -175,120 +148,74 @@ console.log("Data from user should be encrypted.");
   }
 });
 
-
-//---> Updated Email Verification 
-router.post('/verify-email', async (req, res) => {
-  const { token } = req.body;
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const email = decoded.email;
-
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-
-    const user = await userCollection.findOne({ email });
-    if (!user) {
-      return res.status(404).send("User not found");
-    }
-
-    if(user.isEmailVerified) {
-      return res.status(400).send("User already verified");
-    }
-
-    const secret = process.env.JWT_SECRET + user.password;
-
-    jwt.verify(token, secret, async (err) => {
-      if (err) {
-        return res.status(403).send("Invalid or expired token");
-      }
-
-      await userCollection.updateOne({ email }, { $set: { isVerified: true } });
-
-      res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-    });
-
-  } catch (error) {
-    console.error('Error during verification:', error);
-    res.status(400).send("Invalid token format");
-  }
-});
-
-
+//-----------------> Verify Registration Email Endpoint <-----------------//
 router.get('/verify-email/:email/:token', async (req, res) => {
+  // NOTE: Email should already be an ecrypted parameter.
   const { email, token } = req.params;
 
   try {
+
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
+    const tempCollection = db.collection("unverifiedUserAccounts");
 
-    const user = await userCollection.findOne({ email: email });
+    // Make an encrypted query.
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail});
 
-    if (user) {
-      const secret = process.env.JWT_SECRET + user.password;
-
-      try {
-        jwt.verify(token, secret);
-
-        await userCollection.updateOne({ _id: user._id }, { $set: { isEmailVerified: true } });
-
-        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-        
-      } catch (error) {
-        res.send("Invalid or expired token");
-      }
-    } else {
-      return res.status(404).send("User does not exist");
+    // Checks if the user is present in the unverified account database.
+    if (!existingTempUser) {
+      // No such registration.
+      return res.status(404).send("Registration not found.");
     }
+
+    var enterPassword = await encryptClient.encrypt(existingTempUser.password, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const secret = process.env.JWT_SECRET + enterPassword.toString();
+
+    try {
+
+      jwt.verify(token, secret);
+
+      // Encrypt data.
+      var enterName = await encryptClient.encrypt(existingTempUser.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var enterPhone = await encryptClient.encrypt(existingTempUser.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var enterUsername = await encryptClient.encrypt(existingTempUser.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var discordAccount = await encryptClient.encrypt(existingTempUser.discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+	    var organization = await encryptClient.encrypt(existingTempUser.organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var timezone = await encryptClient.encrypt(existingTempUser.timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var pronouns = await encryptClient.encrypt(existingTempUser.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
+      const newUser = {
+        email: queryEncryptedEmail,
+        name: enterName,
+        phone: enterPhone,
+        username: enterUsername,
+        password: enterPassword,
+        discordAccount: discordAccount,
+        organization: organization,
+        pronouns: pronouns,
+        timezone: timezone,
+        accountCreated: existingTempUser.accountCreated,
+        isEmailVerified: true, 
+        projects: [],
+        toDoList: [],
+      };
+
+      // Add verified user to the database and remove it from the temporary account.
+      await userCollection.insertOne(newUser);
+      await tempCollection.deleteOne({email: queryEncryptedEmail});
+      //res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+      
+    } catch (error) {
+      res.send("Invalid or expired token");
+    }
+
   } catch (error) {
     console.error('Error during verification:', error);
     res.status(400).send("Invalid ID format");
   }
+
 });
-
-let userList = [];
-//-----------------> User List Endpoint <-----------------//
-router.get("/userlist", (req, res) => {
-  res.status(200).json({ users: userList });
-});
-
-
-//-----------Read Users Endpoint----------------//
-router.post("/read/users", async (req, res) => {
-    const { users } = req.body;
-    let error = "";
-    var usersInfo = [];
-    
-    if (!users) {
-        error = "User ids are required";
-        return res.status(400).json({ error });
-    }
-  
-    try {
-        for(let i = 0;i<users.length;i++){
-            const db = client.db("ganttify");
-            const results = db.collection("userAccounts");
-        
-          
-            const user = await results.findOne({ _id:new ObjectId(users[i])});
-            usersInfo.push(user);
-        }
-
-        if(!userList){
-            error = "no users found";
-            res.status(400).json({error});
-        }
-        else{
-            res.status(200).json({usersInfo,error});
-        }
-        
-    }
-    catch (error) {
-        console.error("Login error:", error);
-        error = "Internal server error";
-        res.status(500).json({ error });
-    }
-  });
 
 //-----------------> Login Endpoint <-----------------//
 router.post("/login", async (req, res) => {
@@ -301,69 +228,92 @@ router.post("/login", async (req, res) => {
   }
 
   try {
+
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
 
+    // Perform an encrypted query.
+    var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const verifiedUser = await userCollection.findOne({ email: enterEmail });
+    //const unverifiedUser = await tempCollection.findOne({ email: enterEmail});
 
-    const user = await userCollection.findOne({ email });
+    // If found in the unverified database, initiate the registration process.
+    // if (unverifiedUser) {
+    //   const secret = process.env.JWT_SECRET + user.password;
+    //   const token = jwt.sign({ email: user.email }, secret, { expiresIn: "5m" });
 
-    if (!user) {
+    //   let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-email/${email}/${token}`;
+
+    //   const transporter = nodeMailer.createTransport({
+    //     service: 'gmail',
+    //     auth: {
+    //       user: process.env.USER_EMAIL,
+    //       pass: process.env.EMAIL_PASSWORD
+    //     }
+    //   });
+
+    //   let mailDetails = {
+    //     from: process.env.USER_EMAIL,
+    //     to: email,
+    //     subject: 'Verify Your Ganttify Account',
+    //     text: `Hello ${user.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
+    //     html: `<p>Hello ${user.name},</p> <p>Please verify your Ganttify account by clicking the following link:</p> <a href="${link}" className="btn">Verify Account</a>`
+    //   };
+
+    //   transporter.sendMail(mailDetails, function (err, data) {
+    //     if (err) {
+    //       return res.status(500).json({ error: 'Error sending verification email' });
+    //     } else  {
+    //       return res.status(400).json({ error: 'Email not verified. Verification email sent again.' });
+    //     }
+    //   });
+    //   return;
+    // }
+
+    // If user account is not found in the verified database.
+    if (!verifiedUser) {
       error = "Invalid email or password";
       return res.status(401).json({ error });
-    }
-
-
-    if (!user.isEmailVerified) {
-      const secret = process.env.JWT_SECRET + user.password;
-      const token = jwt.sign({ email: user.email }, secret, { expiresIn: "5m" });
-
-      let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-email/${email}/${token}`;
-
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD
-        }
-      });
-
-      let mailDetails = {
-        from: process.env.USER_EMAIL,
-        to: email,
-        subject: 'Verify Your Ganttify Account',
-        text: `Hello ${user.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-        html: `<p>Hello ${user.name},</p> <p>Please verify your Ganttify account by clicking the following link:</p> <a href="${link}" className="btn">Verify Account</a>`
-      };
-
-      transporter.sendMail(mailDetails, function (err, data) {
-        if (err) {
-          return res.status(500).json({ error: 'Error sending verification email' });
-        } else  {
-          return res.status(400).json({ error: 'Email not verified. Verification email sent again.' });
-        }
-      });
-      return;
     }
 
  
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      error = "Invalid email or password";
-      return res.status(401).json({ error });
-    }
-	console.log("successful login");
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+  const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
+
+  if (!isPasswordValid) {
+    error = "Invalid email or password";
+    return res.status(401).json({ error });
+  }
+
+	  console.log("successful login");
+    const token = jwt.sign({ id: verifiedUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+
+    // Encrypt data.
+    var encryptEmail = await encryptClient.encrypt(verifiedUser.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptId = await encryptClient.encrypt(verifiedUser._id, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptName = await encryptClient.encrypt(verifiedUser.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptPhone = await encryptClient.encrypt(verifiedUser.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptUsername = await encryptClient.encrypt(verifiedUser.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptDiscord = await encryptClient.encrypt(verifiedUser.discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptOrganization = await encryptClient.encrypt(verifiedUser.organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptTimezone = await encryptClient.encrypt(verifiedUser.timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptPronouns = await encryptClient.encrypt(verifiedUser.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    
     res.status(200).json({
       token,
-      _id: user._id,
-      email: user.email,
-      name: user.name,
-      username: user.username,
-      phone: user.phone,
-      projects: user.projects,
-      toDoList: user.toDoList,
+      _id: encryptId,
+      email: encryptEmail,
+      name: encryptName,
+      username: encryptUsername,
+      phone: encryptPhone,
+      discordAccount: encryptDiscord,
+      organization: encryptOrganization,
+      pronouns: encryptPronouns,
+      timezone: encryptTimezone,
+      projects: verifiedUser.projects,
+      toDoList: verifiedUser.toDoList,
       error: ""
     });
+
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Internal server error" });
