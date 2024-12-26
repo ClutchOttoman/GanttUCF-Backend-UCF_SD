@@ -2251,59 +2251,59 @@ router.get('/teams/:teamId', async (req, res) => {
   });
   
 
-   router.get('/accept-invite/:token', async (req, res) => {
-    const { token } = req.params;
+//router.get('/accept-invite/:token', async (req, res) => {
+//    const { token } = req.params;
   
-    try {
-      const decodedToken = jwt.decode(token);
-      const { email, projectId } = decodedToken;
+//    try {
+//      const decodedToken = jwt.decode(token);
+//      const { email, projectId } = decodedToken;
   
-      const db = client.db('ganttify');
-      const userAccounts = db.collection('userAccounts');
-      const projectCollection = db.collection('projects');
-      const teamCollection = db.collection('teams');
-  
-      const user = await userAccounts.findOne({ email });
-  
-      if (user) {
-        const secret = process.env.JWT_SECRET + user.password;
-  
-        try {
-          jwt.verify(token, secret);
-  
-          await userAccounts.updateOne(
-            { _id: user._id },
-            { $addToSet: { projects: new ObjectId(projectId) } }
-          );
-  
-          const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+//      const db = client.db('ganttify');
+//      const userAccounts = db.collection('userAccounts');
+//      const projectCollection = db.collection('projects');
+//      const teamCollection = db.collection('teams');
+//  
+//     const user = await userAccounts.findOne({ email });
+//  
+//      if (user) {
+//        const secret = process.env.JWT_SECRET + user.password;
+//  
+//       try {
+//          jwt.verify(token, secret);
+//  
+//         await userAccounts.updateOne(
+//            { _id: user._id },
+//            { $addToSet: { projects: new ObjectId(projectId) } }
+//          );
+//  
+//          const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+//
+//          if (!project) {
+//            return res.status(404).send('Project does not exist');
+//          }
+//  
+//          await teamCollection.updateOne(
+//            { _id: new ObjectId(project.team) },
+//            { $addToSet: { members: user._id } }
+//          );
+//  
+//
+//          res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+//        } catch (error) {
+//          console.error('Invalid or expired token:', error);
+//          res.status(400).send('Invalid or expired token');
+//        }
+//      } else {
+//        return res.status(404).send('User does not exist');
+//      }
+//
+//    } catch (error) {
+//      console.error('Error during invitation acceptance:', error);
+//      res.status(400).send('Invalid ID format');
+//    }
+//  });
 
-          if (!project) {
-            return res.status(404).send('Project does not exist');
-          }
-  
-          await teamCollection.updateOne(
-            { _id: new ObjectId(project.team) },
-            { $addToSet: { members: user._id } }
-          );
-  
-
-          res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-        } catch (error) {
-          console.error('Invalid or expired token:', error);
-          res.status(400).send('Invalid or expired token');
-        }
-      } else {
-        return res.status(404).send('User does not exist');
-      }
-
-    } catch (error) {
-      console.error('Error during invitation acceptance:', error);
-      res.status(400).send('Invalid ID format');
-    }
-  });
-
-   router.post("/register/:token", async (req, res) => {
+router.post("/register/:token", async (req, res) => {
 
     const { token } = req.params;
     const { email, name, phone, password, username } = req.body;
