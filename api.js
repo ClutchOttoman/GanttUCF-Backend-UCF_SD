@@ -412,32 +412,69 @@ const isValidPattern = (pattern) => {
   return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
 };
 
-router.post("/createtask", async (req, res) => {
+
+//------> Create Task & Added Task Category <-------//
+router.post('/createtask', async (req, res) => {
   const {
-    description = "",
+    description = '',
     dueDateTime,
-    progress = "Not Started",
+    progress = 'Not Started',
     assignedTasksUsers = [],
     taskTitle,
     tiedProjectId,
     taskCreatorId,
     startDateTime,
-    color = "#DC6B2C",
-    pattern = ""
+    color = '#DC6B2C',
+    pattern = '',
+    taskCategory = '' // Task category is optional
   } = req.body;
-  let error = "";
 
+  // Validate required fields
   if (!dueDateTime || !taskTitle || !taskCreatorId || !startDateTime) {
-    error = "Task dueDateTime, taskTitle, taskCreatorId, and startDateTime are required";
-    return res.status(400).json({ error });
+    return res.status(400).json({
+      error: 'Task dueDateTime, taskTitle, taskCreatorId, and startDateTime are required'
+    });
   }
 
   try {
-    const db = client.db("ganttify");
-    const taskCollection = db.collection("tasks");
-    const projectCollection = db.collection("projects");
-    const userCollection = db.collection("userAccounts");
+    const db = client.db('ganttify');
+    const taskCollection = db.collection('tasks');
+    const projectCollection = db.collection('projects');
+    const userCollection = db.collection('userAccounts');
+    const taskCategoriesCollection = db.collection('task_categories');
 
+    // Initialize categoryId to null
+    let categoryId = null;
+
+    // Check if taskCategory is provided and not empty
+    if (taskCategory && taskCategory.trim()) {
+      console.log(`Checking for existing category: ${taskCategory}`);
+
+      // Try to find the existing category
+      let category = await taskCategoriesCollection.findOne({ categoryTitle: taskCategory });
+
+      if (!category) {
+        console.log('Category not found. Inserting new category.');
+
+        // Insert the new category
+        const newCategory = {
+          categoryTitle: taskCategory,
+          tasksUnder: [] // Initialize with an empty array for tasks
+        };
+
+        const insertedCategory = await taskCategoriesCollection.insertOne(newCategory);
+        categoryId = insertedCategory.insertedId;
+        console.log(`New category inserted with ID: ${categoryId}`);
+      } else {
+        // If the category exists, get its ID
+        categoryId = category._id;
+        console.log(`Using existing category with ID: ${categoryId}`);
+      }
+    } else {
+      console.log('No task category provided.');
+    }
+
+    // Create the new task object with taskCategoryId if available
     const newTask = {
       description,
       dueDateTime: new Date(dueDateTime),
@@ -449,31 +486,40 @@ router.post("/createtask", async (req, res) => {
       taskCreatorId: new ObjectId(taskCreatorId),
       startDateTime: new Date(startDateTime),
       color,
-      pattern
+      pattern,
+      taskCategory,
+      taskCategoryId: categoryId // Include the category ID if available
     };
 
+    // Insert the new task into the tasks collection
+    const taskResult = await taskCollection.insertOne(newTask);
+    const taskId = taskResult.insertedId;
+    console.log(`Task inserted with ID: ${taskId}`);
 
-
-    const task = await taskCollection.insertOne(newTask);
-    const taskId = task.insertedId;
-
+    // Update the project with the new task ID
     await projectCollection.updateOne(
       { _id: new ObjectId(tiedProjectId) },
       { $push: { tasks: taskId } }
     );
 
+    // Update user task lists if assigned users are provided
     if (assignedTasksUsers.length > 0) {
       await userCollection.updateMany(
-        { _id: { $in: assignedTasksUsers.map(id => new ObjectId(id)) } },
+        { _id: { $in: assignedTasksUsers.map((id) => new ObjectId(id)) } },
         { $push: { toDoList: taskId } }
       );
     }
 
+      await taskCategoriesCollection.updateOne(
+        { _id: categoryId },
+        { $push: { tasksUnder: taskId } }
+      );
+
+    // Respond with the newly created task details
     res.status(201).json({ ...newTask, _id: taskId });
   } catch (error) {
-    console.error("Error creating task:", error);
-    error = "Internal server error";
-    res.status(500).json({ error });
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -496,7 +542,8 @@ router.get("/readtasks", async (req, res) => {
   }
 });
 
-//-----------------> Update Task <-----------------//
+
+//-----------------> Update Task & Task Category <-----------------//
 router.put("/tasks/:id", async (req, res) => {
   const { id } = req.params;
   const updateFields = req.body;
@@ -510,6 +557,7 @@ router.put("/tasks/:id", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
+    const taskCategoriesCollection = db.collection("task_categories");
 
     // Convert any provided ObjectId fields
     if (updateFields.assignedTasksUsers) {
@@ -527,17 +575,45 @@ router.put("/tasks/:id", async (req, res) => {
       updateFields.dueDateTime = new Date(updateFields.dueDateTime);
     }
 
-    const result = await taskCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: updateFields },
-    );
-    res.status(200).json(result);
-  } catch (error) {
-    console.error("Error updating task:", error);
-    error = "Internal server error";
-    res.status(500).json({ error });
-  }
+    if (updateFields.taskCategory) {
+      const categoryTitle = updateFields.taskCategory;
+
+   // Find the category by its name
+   const category = await taskCategoriesCollection.findOne({ categoryTitle });
+
+   if (category) {
+     // If the category exists, update the task and add to the tasksUnder array
+     await taskCategoriesCollection.updateOne(
+       { categoryTitle },
+       { $push: { tasksUnder: new ObjectId(id) } } // Add task to tasksUnder field
+     );
+   } else {
+     // If category doesn't exist, create a new category and add the task under it
+     const newCategory = {
+       categoryTitle,
+       tasksUnder: [new ObjectId(id)],
+     };
+
+     await taskCategoriesCollection.insertOne(newCategory);
+   }
+
+   // Update the task itself
+   updateFields.taskCategoryId = new ObjectId(category ? category._id : newCategory._id);
+ }
+
+ const result = await taskCollection.updateOne(
+   { _id: new ObjectId(id) },
+   { $set: updateFields },
+ );
+
+ res.status(200).json(result);
+} catch (error) {
+ console.error("Error updating task:", error);
+ error = "Internal server error";
+ res.status(500).json({ error });
+}
 });
+
 
 //-----------------> Delete Task <-----------------//
 router.delete("/tasks/:id", async (req, res) => {
@@ -554,6 +630,22 @@ router.delete("/tasks/:id", async (req, res) => {
     console.error("Error deleting task:", error);
     error = "Internal server error";
     res.status(500).json({ error });
+  }
+});
+
+
+// --------------> Get all Task Categories <-----------//
+router.get('/taskcategories', async (req, res) => {
+  try {
+    const db = client.db("ganttify");
+    const taskCategoriesCollection = db.collection("task_categories");
+
+    const taskCategories = await taskCategoriesCollection.find().toArray(); // Fetch all categories
+
+    res.status(200).json(taskCategories); // Return the task categories as a JSON array
+  } catch (error) {
+    console.error("Error fetching task categories:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -843,6 +935,64 @@ router.put("/projects/:id", async (req, res) => {
     res.status(500).json({ error });
   }
 });
+
+
+//-------> Update Project Name ONLY <-----------//
+router.put('/projects/updateProjectName/:id', async (req, res) => {
+  const { id } = req.params;
+  const { nameProject } = req.body;
+  let error = "";
+
+  // Validate the project ID
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid project ID format' });
+  }
+
+  // Validate the new project name
+  if (!nameProject || typeof nameProject !== 'string' || nameProject.trim() === '') {
+    console.log("Invalid or empty project name:", nameProject);
+    return res.status(400).json({ error: 'Project name cannot be empty or invalid' });
+  }
+
+  try {
+    const db = client.db("ganttify");
+    const projectCollection = db.collection("projects");
+
+
+    //Fetch the current project
+    const project = await projectCollection.findOne({ _id: new ObjectId(id) });
+    if (!project) {
+      console.log("Project not found:", id);
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+
+    // Update the project name
+    const result = await projectCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { nameProject: nameProject.trim() } }
+    );
+
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Fetch the updated project
+    const updatedProject = await projectCollection.findOne({ _id: new ObjectId(id) });
+    console.log("Updated project:", updatedProject);
+
+    res.status(200).json({
+      message: 'Project name updated successfully',
+      updatedProject
+    });
+
+  } catch (error) {
+    console.error("Error updating project name:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 //-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
