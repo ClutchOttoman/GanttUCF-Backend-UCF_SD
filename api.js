@@ -2251,8 +2251,6 @@ router.get('/teams/:teamId', async (req, res) => {
   });
   
 
-
-
    router.get('/accept-invite/:token', async (req, res) => {
     const { token } = req.params;
   
@@ -2278,9 +2276,7 @@ router.get('/teams/:teamId', async (req, res) => {
             { $addToSet: { projects: new ObjectId(projectId) } }
           );
   
-  }
           const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
-
 
           if (!project) {
             return res.status(404).send('Project does not exist');
@@ -2293,7 +2289,8 @@ router.get('/teams/:teamId', async (req, res) => {
   
 
           res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-        } catch (error) {
+        } 
+        catch (error) {
           console.error('Invalid or expired token:', error);
           res.status(400).send('Invalid or expired token');
         }
@@ -2308,10 +2305,7 @@ router.get('/teams/:teamId', async (req, res) => {
     }
   });
 
-
-
    router.post("/register/:token", async (req, res) => {
-
 
     const { token } = req.params;
     const { email, name, phone, password, username } = req.body;
@@ -2394,6 +2388,7 @@ router.post('/decode-token', (req, res) => {
   
   if (!token) {
     return res.status(400).json({ error: 'Token is required' });
+  }
 
   try {
     const decoded = jwt.decode(token);
@@ -2522,4 +2517,4 @@ router.get("/tasks/:id", async (req, res) => {
   }	
 });
 
-module.exports = router;		
+module.exports = router;	
