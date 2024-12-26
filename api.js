@@ -2214,7 +2214,7 @@ router.get('/teams/:teamId', async (req, res) => {
       const userAccounts = db.collection('userAccounts');
       const user = await userAccounts.findOne({ email });
   
-      const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
+	    const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
       const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
       
       const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
@@ -2289,15 +2289,13 @@ router.get('/teams/:teamId', async (req, res) => {
   
 
           res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-        } 
-        catch (error) {
+        } catch (error) {
           console.error('Invalid or expired token:', error);
           res.status(400).send('Invalid or expired token');
         }
       } else {
         return res.status(404).send('User does not exist');
       }
-
 
     } catch (error) {
       console.error('Error during invitation acceptance:', error);
