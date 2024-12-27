@@ -44,6 +44,10 @@ let client;
 // For CSFLE explicit encryption.
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
 
+//////////////
+// User profile details and account security endpoints.
+//////////////
+
 //-----------------> Register Endpoint <-----------------//
 router.post("/register", async (req, res) => {
   const { email, name, phone, password, username } = req.body;
@@ -320,12 +324,136 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// Forgot password
+router.post('/forgot-password', async (req, res) => 
+{
+  const {email} = req.body;
+  let error = '';
+  
+  try{
+
+    const db = client.db('ganttify');
+    const results = db.collection('userAccounts');
+    const user = await results.findOne({email});
+
+    if (user) {
+      
+      const secret = process.env.JWT_SECRET + user.password;
+      const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "2m",} );
+
+      let link = `https://ganttify-5b581a9c8167.herokuapp.com/reset-password/${user._id}/${token}`;
+     
+      const transporter = nodeMailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.USER_EMAIL,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+
+      let mailDetails = {
+        from: process.env.USER_EMAIL,
+        to: email,
+        subject: 'Reset Your Ganttify Password',
+        text: `Hello ${user.name},\n We recieved a request to reset your Ganttify password. Click the link to reset your password: ${link}`,
+        html: `<p>Hello ${user.name},</p> <p>We recieved a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
+      };
+
+      transporter.sendMail(mailDetails, function (err, data) {
+        if (err) {
+          return res.status(500).json({ error: 'Error sending email' });
+        } else {
+          return res.status(200).json({ message: 'Password reset email sent' });
+        }
+      });
+    } else {
+      return res.status(404).json({ error: 'User with that email address does not exist.' });
+    }
+
+
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error });
+  } 
+});
+  
+router.get('/reset-password/:id/:token', async (req, res) => 
+{
+
+  const { id, token } = req.params;
+
+  try {
+
+    const objectId = new ObjectId(id);
+  
+    const db = client.db('ganttify');
+    const results = db.collection('userAccounts');
+    const user = await results.findOne({_id: objectId});
+
+
+    if (user) {
+      const secret = process.env.JWT_SECRET + user.password;
+  
+      try {
+
+        jwt.verify(token, secret);
+        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+  
+      } catch (error) {
+        res.send("Not verified");
+      }
+    } 
+  
+    else{
+      return res.status(404).send("User does not exist");
+    }
+  } catch(error) {
+    console.error('Error during password reset verification:', error);
+    res.status(400).send("Invalid ID format");
+  }
+
+});
+  
+router.post('/reset-password', async (req, res) => 
+{
+  const { id, password } = req.body;
+
+  let error = '';
+
+  try {
+    const db = client.db('ganttify');
+    const objectId = ObjectId.createFromHexString(id); 
+    const userCollection = db.collection('userAccounts');
+    const user = await userCollection.findOne({_id: objectId});
+
+
+    if (user){
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      try {
+        await userCollection.updateOne({_id: objectId}, {$set: {password: hashedPassword}});
+        res.status(200).json({ message: "Password has been reset successfully" });
+      } catch(error) {
+        return res.json({status: "error", data: error})
+      }
+
+    } else {
+      error = 'User not found';
+      return res.status(400).json({ error });
+    }
+
+  } catch (error) {
+    console.error('Error occured during password reset:', error);
+    error = 'Internal server error';
+    res.status(500).json({ error });
+  } 
+});
+
 // let userList = [];
 // //-----------------> User List Endpoint <-----------------//
 // router.get("/userlist", (req, res) => {
 //   res.status(200).json({ users: userList });
 // });
-
 
 //-----------Read Users Endpoint----------------//
 router.post("/read/users", async (req, res) => {
@@ -370,7 +498,6 @@ router.post("/read/users", async (req, res) => {
 // Expression to validate hex color
 const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
 
-
 // List of valid patterns
 // Replaced the valid file as pngs instead of svgs.
 const allowedPatterns = {
@@ -411,7 +538,6 @@ const isValidPattern = (pattern) => {
   const [folder, file] = pattern.split('/');
   return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
 };
-
 
 //------> Create Task & Added Task Category <-------//
 router.post('/createtask', async (req, res) => {
@@ -523,7 +649,6 @@ router.post('/createtask', async (req, res) => {
   }
 });
 
-
 //-----------------> Read Task <-----------------//
 router.get("/readtasks", async (req, res) => {
   let error = "";
@@ -541,7 +666,6 @@ router.get("/readtasks", async (req, res) => {
     res.status(500).json({ error });
   }
 });
-
 
 //-----------------> Update Task & Task Category <-----------------//
 router.put("/tasks/:id", async (req, res) => {
@@ -614,7 +738,6 @@ router.put("/tasks/:id", async (req, res) => {
 }
 });
 
-
 //-----------------> Delete Task <-----------------//
 router.delete("/tasks/:id", async (req, res) => {
   const { id } = req.params;
@@ -633,7 +756,6 @@ router.delete("/tasks/:id", async (req, res) => {
   }
 });
 
-
 // --------------> Get all Task Categories <-----------//
 router.get('/taskcategories', async (req, res) => {
   try {
@@ -648,7 +770,6 @@ router.get('/taskcategories', async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // -----------------> Assign user to a task <----------------- //
 router.post("/assignusertotask", async (req, res) => {
@@ -688,7 +809,6 @@ router.post("/assignusertotask", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // -----------------> Assign task to a project <----------------- //
 router.post("/assigntaskstoproject", async (req, res) => {
@@ -750,7 +870,6 @@ router.post("/assigntaskstoproject", async (req, res) => {
   }
 });
 
-
 // Project CRUD Operations
 //-----------------> Create a project <-----------------//
 router.post("/createproject", async (req, res) => {
@@ -789,18 +908,13 @@ router.post("/createproject", async (req, res) => {
 
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
-
-
     const newTeam = {founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId],};
-
     const team = await teamCollection.insertOne(newTeam);
 
-  
     await projectCollection.updateOne(
       { _id: projectId },
       { $set: { team: team.insertedId } }
     );
-
 
     await userCollection.updateOne(
       { _id: new ObjectId(founderId) },
@@ -835,7 +949,6 @@ router.get("/readprojects", async (req, res) => {
   }
 });
 
-
 //-----------------> Read public projects only <-----------------//
 router.get("/publicprojects", async (req, res) => {
   try {
@@ -850,7 +963,6 @@ router.get("/publicprojects", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // -----------------> Read specific projects <-----------------//
 router.post("/readspecificprojects", async (req, res) => {
@@ -870,7 +982,6 @@ router.post("/readspecificprojects", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 //-----------------> Read all projects for a specific user (public & founder) <-----------------//
 router.get("/userprojects/:userId", async (req, res) => {
@@ -893,7 +1004,6 @@ router.get("/userprojects/:userId", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 //-----------------> Update Project <-----------------//
 router.put("/projects/:id", async (req, res) => {
@@ -928,6 +1038,7 @@ router.put("/projects/:id", async (req, res) => {
       { _id: new ObjectId(id) },
       { $set: updateFields },
     );
+
     res.status(200).json(result);
   } catch (error) {
     console.error("Error updating project:", error);
@@ -935,7 +1046,6 @@ router.put("/projects/:id", async (req, res) => {
     res.status(500).json({ error });
   }
 });
-
 
 //-------> Update Project Name ONLY <-----------//
 router.put('/projects/updateProjectName/:id', async (req, res) => {
@@ -958,7 +1068,6 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
 
-
     //Fetch the current project
     const project = await projectCollection.findOne({ _id: new ObjectId(id) });
     if (!project) {
@@ -966,13 +1075,11 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-
     // Update the project name
     const result = await projectCollection.updateOne(
       { _id: new ObjectId(id) },
       { $set: { nameProject: nameProject.trim() } }
     );
-
 
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: 'Project not found' });
@@ -993,15 +1100,12 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
   }
 });
 
-
 //-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
     return date;
 }
-
-
 
 // Delete a project
 router.delete("/projects/:id", async (req, res) => {
@@ -1249,136 +1353,6 @@ router.delete("/wipeproject/:id", async (req, res) => {
   }
 });
 
-// Forgot password
-router.post('/forgot-password', async (req, res) => 
-{
-  const {email} = req.body;
-  let error = '';
-  
-
-  try{
-
-    const db = client.db('ganttify');
-    const results = db.collection('userAccounts');
-    const user = await results.findOne({email});
-
-
-    if (user) {
-      
-      const secret = process.env.JWT_SECRET + user.password;
-      const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "2m",} );
-
-      let link = `https://ganttify-5b581a9c8167.herokuapp.com/reset-password/${user._id}/${token}`;
-     
-      
-
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD
-        }
-      });
-
-      let mailDetails = {
-        from: process.env.USER_EMAIL,
-        to: email,
-        subject: 'Reset Your Ganttify Password',
-        text: `Hello ${user.name},\n We recieved a request to reset your Ganttify password. Click the link to reset your password: ${link}`,
-        html: `<p>Hello ${user.name},</p> <p>We recieved a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
-      };
-
-
-      transporter.sendMail(mailDetails, function (err, data) {
-        if (err) {
-          return res.status(500).json({ error: 'Error sending email' });
-        } else {
-          return res.status(200).json({ message: 'Password reset email sent' });
-        }
-      });
-    } else {
-      return res.status(404).json({ error: 'User with that email address does not exist.' });
-    }
-
-
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error });
-  } 
-});
-  
-router.get('/reset-password/:id/:token', async (req, res) => 
-{
-
-  const { id, token } = req.params;
-
-  try {
-
-    const objectId = new ObjectId(id);
-  
-    const db = client.db('ganttify');
-    const results = db.collection('userAccounts');
-    const user = await results.findOne({_id: objectId});
-
-
-    if (user) {
-      const secret = process.env.JWT_SECRET + user.password;
-  
-      try {
-
-        jwt.verify(token, secret);
-        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-  
-      } catch (error) {
-        res.send("Not verified");
-      }
-    } 
-  
-    else{
-      return res.status(404).send("User does not exist");
-    }
-  } catch(error) {
-    console.error('Error during password reset verification:', error);
-    res.status(400).send("Invalid ID format");
-  }
-
-});
-  
-router.post('/reset-password', async (req, res) => 
-{
-  const { id, password } = req.body;
-
-  let error = '';
-
-  try {
-    const db = client.db('ganttify');
-    const objectId = ObjectId.createFromHexString(id); 
-    const userCollection = db.collection('userAccounts');
-    const user = await userCollection.findOne({_id: objectId});
-
-
-    if (user){
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      try {
-        await userCollection.updateOne({_id: objectId}, {$set: {password: hashedPassword}});
-        res.status(200).json({ message: "Password has been reset successfully" });
-      } catch(error) {
-        return res.json({status: "error", data: error})
-      }
-
-    } else {
-      error = 'User not found';
-      return res.status(400).json({ error });
-    }
-
-  } catch (error) {
-    console.error('Error occured during password reset:', error);
-    error = 'Internal server error';
-    res.status(500).json({ error });
-  } 
-});
-
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
@@ -1440,7 +1414,6 @@ router.delete("/user/:userId", async (req, res) => {
   }
 });
 
-
 //////////////////////
 // SEARCH ENDPOINTS //
 //////////////////////
@@ -1468,7 +1441,6 @@ router.get("/user/:userId", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // -----------------> Get All Users <-----------------//
 router.get("/allusers", async (req, res) => {
@@ -1602,10 +1574,7 @@ router.post("/search/recently-deleted", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const projectCollection = db.collection("recently_deleted_projects");
-
-
     const query = {founderId: new ObjectId(founderId), nameProject: { $regex: title, $options: "i" } };
-
     const sortOptions = { [sortBy]: 1 }; // 1 for ascending, -1 for descending
 
     const projects = await projectCollection
@@ -1614,7 +1583,6 @@ router.post("/search/recently-deleted", async (req, res) => {
       .toArray();
 
     res.status(200).json(projects);
-
 
   } catch (error) {
     console.error("Error searching projects:", error);
@@ -1647,15 +1615,13 @@ router.post("/search/categories", async (req, res) => {
 
 // Search Task by Name, Due Date, (Sort by Completion Percentage)
 router.post("/search/tasks", async (req, res) => {
-    //need to also add functionality for teamId, we'll get there
+  //need to also add functionality for teamId, we'll get there
   const {founderId, name, dueDate, sortBy = "completionPercentage" } = req.body;
   const query = {};
 
   if (!dueDate) {
     query.description = { founderId:founderId,$regex: name, $options: "i" };
-  }
-  
-  else {
+  } else {
     query.description = { founderId: founderId, $gte: new Date(dueDate) };
   }
   console.log(query);
@@ -1663,9 +1629,7 @@ router.post("/search/tasks", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
-
     const sortOptions = { [sortBy]: 1 }; // 1 for ascending, -1 for descending
-
     const tasks = await taskCollection.find(query).sort(sortOptions).toArray();
 
     res.status(200).json(tasks);
@@ -1673,6 +1637,7 @@ router.post("/search/tasks", async (req, res) => {
     console.error("Error searching tasks:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+
 });
 
 //-> Search Task for Specific User on Project Team <-//
@@ -1696,6 +1661,7 @@ router.post("/search/tasks/users", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 //-> Search Tasks for Specific User  <-//
 router.post("/search/tasks/todo", async (req, res) => {
     const { userId } = req.body;
@@ -1717,7 +1683,7 @@ router.post("/search/tasks/todo", async (req, res) => {
     }
   });
 
-  //-------------> Display team info <-------------//
+//-------------> Display team info <-------------//
 router.get('/teams/:teamId/teaminfo', async (req, res) => {
   const { teamId } = req.params;
 
@@ -1844,6 +1810,7 @@ router.post("/restore-project/:id", async (req, res) => {
     error = "Internal server error";
     res.status(500).json({ error });
   }
+
 });
 
 // Add members to a team
@@ -1892,7 +1859,6 @@ router.put('/teams/:teamId/members', async (req, res) => {
     // Verify that all members are valid users
     const users = await userCollection.find({ _id: { $in: memberObjectIds } }).toArray();
     const validUserIds = users.map(user => user._id.toString());
-
     const invalidMembers = members.filter(id => !validUserIds.includes(id));
 
     if (invalidMembers.length > 0) {
@@ -1917,16 +1883,13 @@ router.put('/teams/:teamId/members', async (req, res) => {
     console.error("Error updating team:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
-});
 
+});
 
 // Update the role of an existing member
 router.put('/teams/:teamId/update-role', async (req, res) => {
-
-
   const { teamId } = req.params;
   const { userId, newRole } = req.body;
-
 
   if (!teamId || !userId || !newRole) {
     return res.status(400).json({ error: "Team ID, user ID, and new role are required" });
@@ -1944,13 +1907,11 @@ router.put('/teams/:teamId/update-role', async (req, res) => {
 
     const teamObjectId = new ObjectId(teamId);
     const userObjectId = new ObjectId(userId);
-
-  
     const team = await teamCollection.findOne({ _id: teamObjectId });
+
     if (!team) {
       return res.status(404).json({ error: "Team not found" });
     }
-
     
     const user = await userCollection.findOne({ _id: userObjectId });
     if (!user) {
@@ -1960,14 +1921,11 @@ router.put('/teams/:teamId/update-role', async (req, res) => {
     const isMember = teamCollection.findOne({members: userObjectId});
     const isEditor = teamCollection.findOne({editors: userObjectId});
     
-
-
     if (!isMember && !isEditor) {
       return res.status(404).json({ error: "User not found in the team" });
     }
 
     let update;
-
 
     if (newRole === "editor") {
       update = {
@@ -1975,18 +1933,13 @@ router.put('/teams/:teamId/update-role', async (req, res) => {
         $pull: { members: userObjectId }
       };
 
-
-
     } else if (newRole === "member") {
       update = {
         $addToSet: { members: userObjectId },
         $pull: { editors: userObjectId }
       };
-   
 
-    } 
-    
-    else {
+    } else {
       return res.status(400).json({ error: "Invalid role. Role must be 'editor' or 'member'." });
     }
 
@@ -2004,8 +1957,6 @@ router.put('/teams/:teamId/update-role', async (req, res) => {
   }
 });
 
-
-
 // Removes members or editors from a team
 router.put('/teams/:teamId/removeteammember', async (req, res) => {
 
@@ -2021,9 +1972,6 @@ router.put('/teams/:teamId/removeteammember', async (req, res) => {
     const teamCollection = db.collection("teams");
     const userCollection = db.collection("userAccounts");
 
-   
-    
-
     if (!ObjectId.isValid(teamId) || !ObjectId.isValid(userId) || !ObjectId.isValid(projectId)) {
       return res.status(400).json({ error: "Invalid ID format" });
     }
@@ -2031,12 +1979,8 @@ router.put('/teams/:teamId/removeteammember', async (req, res) => {
     const teamObjectId = new ObjectId(teamId);
     const userObjectId = new ObjectId(userId);
     const projectObjectId = new ObjectId(projectId);
-
- 
-
-   
-    
     const team = await teamCollection.findOne({ _id: teamObjectId });
+
     if (!team) {
       return res.status(404).json({ error: "Team not found" });
     }
@@ -2046,7 +1990,6 @@ router.put('/teams/:teamId/removeteammember', async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-   
     const isMember = team.members.some(memberId => memberId.equals(userObjectId));
     const isEditor = team.editors.some(editorId => editorId.equals(userObjectId));
 
@@ -2055,8 +1998,6 @@ router.put('/teams/:teamId/removeteammember', async (req, res) => {
     if (!isMember && !isEditor) {
       return res.status(404).json({ error: "User not found in the team" });
     }
-
- 
 
     const update = {
       $pull: {
@@ -2071,23 +2012,18 @@ router.put('/teams/:teamId/removeteammember', async (req, res) => {
       return res.status(500).json({ error: "Failed to update team" });
     }
 
- 
     const userUpdateResult = await userCollection.updateOne(
       { _id: userObjectId },
       { $pull: { projects: projectObjectId } }
     );
 
-  
-
     return res.status(200).json({ message: "Member removed successfully" });
+
   } catch (error) {
     console.error("Error updating team:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
-
-
-
 
 router.post("/search/tasks/project", async (req, res) => {
   const { projectId } = req.body;
@@ -2096,7 +2032,6 @@ router.post("/search/tasks/project", async (req, res) => {
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
     const taskCollection = db.collection("tasks");
-
     const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
 
     if (!project) {
@@ -2130,19 +2065,16 @@ router.post("/updateSingleUserToDoList", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
-
-
     await userCollection.updateOne({ _id: new ObjectId(userId) }, isChecked ? { $addToSet: { toDoList: new ObjectId(taskId) } } : { $pull: { toDoList: new ObjectId(taskId) } });
 
     res.status(200).json({ message: "User's toDoList updated successfully" });
   } catch (error) {
-
-    
     console.error("Error updating user's toDoList:", error);
     error = "Internal server error";
     res.status(500).json({ error });
   }
 });
+
 router.get('/getProjectDetails/:projectId', async (req, res) => {
   const projectId = req.params.projectId;
   try {
@@ -2158,11 +2090,8 @@ router.get('/getProjectDetails/:projectId', async (req, res) => {
       return res.status(404).json({ error: "Invalid team ID in project" });
     }
 
-    
-
     const teamCollection = db.collection("teams");
     const team = await teamCollection.findOne({ _id: new ObjectId(project.team) });
-
 
     if (!team) {
       return res.status(404).json({ error: "Team not found" });
@@ -2195,191 +2124,172 @@ router.get('/teams/:teamId', async (req, res) => {
   }
 });
 
-
-
-
-
-
 //Invite team member api's//
+router.post('/invite-user', async (req, res) => {
+  const { email, projectId } = req.body;
 
-  router.post('/invite-user', async (req, res) => {
-    const { email, projectId } = req.body;
-  
-    if (!email || !projectId) {
-      return res.status(400).json({ error: 'Email and Project ID are required' });
-    }
-  
-    try {
-      const db = client.db('ganttify');
-      const userAccounts = db.collection('userAccounts');
-      const user = await userAccounts.findOne({ email });
-  
-	    const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
-      const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
-      
-      const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
-  
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD,
-        },
-      });
-  
-      const mailDetails = {
-        from: process.env.USER_EMAIL,
-        to: email,
-        subject: 'Invitation to Join Ganttify',
-        text: `Hello,\n\nYou have been invited to join a project on Ganttify. Click the link to ${user ? 'accept the invitation' : 'create an account and join'}: ${link}`,
-        html: `<p>Hello,</p><p>You have been invited to join a project on Ganttify. Click the button below to ${user ? 'accept the invitation' : 'create an account and join'}:</p><a href="${link}" class="btn">Join Ganttify</a>`,
-      };
-  
-      transporter.sendMail(mailDetails, (err, data) => {
+  if (!email || !projectId) {
+    return res.status(400).json({ error: 'Email and Project ID are required' });
+  }
 
-        if (err) {
-          return res.status(500).json({ error: 'Error sending email' });
-        } else {
-          return res.status(200).json({ message: 'Invitation email sent' });
-        }
+  try {
+    const db = client.db('ganttify');
+    const userAccounts = db.collection('userAccounts');
+    const user = await userAccounts.findOne({ email });
 
-      });
-    } catch (error) {
-      console.error('Error inviting user:', error);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  });
+    const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
+    const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
+    
+    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
+
+    const transporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.USER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+
+    const mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email,
+      subject: 'Invitation to Join Ganttify',
+      text: `Hello,\n\nYou have been invited to join a project on Ganttify. Click the link to ${user ? 'accept the invitation' : 'create an account and join'}: ${link}`,
+      html: `<p>Hello,</p><p>You have been invited to join a project on Ganttify. Click the button below to ${user ? 'accept the invitation' : 'create an account and join'}:</p><a href="${link}" class="btn">Join Ganttify</a>`,
+    };
+
+    transporter.sendMail(mailDetails, (err, data) => {
+
+      if (err) {
+        return res.status(500).json({ error: 'Error sending email' });
+      } else {
+        return res.status(200).json({ message: 'Invitation email sent' });
+      }
+
+    });
+  } catch (error) {
+    console.error('Error inviting user:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
   
 
 router.get('/accept-invite/:token', async (req, res) => {
-    const { token } = req.params;
-  
-    try {
-      const decodedToken = jwt.decode(token);
-      const { email, projectId } = decodedToken;
-  
-      const db = client.db('ganttify');
-      const userAccounts = db.collection('userAccounts');
-      const projectCollection = db.collection('projects');
-      const teamCollection = db.collection('teams');
-  
-     const user = await userAccounts.findOne({ email });
-  
-      if (user) {
-        const secret = process.env.JWT_SECRET + user.password;
-        
-       try {
-          jwt.verify(token, secret);
-  
-         await userAccounts.updateOne(
-            { _id: user._id },
-            { $addToSet: { projects: new ObjectId(projectId) } }
-          );
-  
-          const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+  const { token } = req.params;
 
-          if (!project) {
-            return res.status(404).send('Project does not exist');
-          }
-  
-          await teamCollection.updateOne(
-            { _id: new ObjectId(project.team) },
-            { $addToSet: { members: user._id } }
-          );
-  
+  try {
+    const decodedToken = jwt.decode(token);
+    const { email, projectId } = decodedToken;
 
-          res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-        } catch (error) {
-          console.error('Invalid or expired token:', error);
-          res.status(400).send('Invalid or expired token');
+    const db = client.db('ganttify');
+    const userAccounts = db.collection('userAccounts');
+    const projectCollection = db.collection('projects');
+    const teamCollection = db.collection('teams');
+    const user = await userAccounts.findOne({ email });
+
+    if (user) {
+      const secret = process.env.JWT_SECRET + user.password;
+
+      try {
+        jwt.verify(token, secret);
+
+        await userAccounts.updateOne(
+          { _id: user._id },
+          { $addToSet: { projects: new ObjectId(projectId) } }
+        );
+
+        const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+
+        if (!project) {
+          return res.status(404).send('Project does not exist');
         }
-      } else {
-        return res.status(404).send('User does not exist');
-      }
 
-    } catch (error) {
-      console.error('Error during invitation acceptance:', error);
-      res.status(400).send('Invalid ID format');
+        await teamCollection.updateOne(
+          { _id: new ObjectId(project.team) },
+          { $addToSet: { members: user._id } }
+        );
+        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+      } catch (error) {
+        console.error('Invalid or expired token:', error);
+        res.status(400).send('Invalid or expired token');
+      }
+    } else {
+      return res.status(404).send('User does not exist');
     }
-  });
+
+  } catch (error) {
+    console.error('Error during invitation acceptance:', error);
+    res.status(400).send('Invalid ID format');
+  }
+});
 
 router.post("/register/:token", async (req, res) => {
+  const { token } = req.params;
+  const { email, name, phone, password, username } = req.body;
 
-    const { token } = req.params;
-    const { email, name, phone, password, username } = req.body;
-  
-    if (!email || !name || !phone || !password || !username) {
-      return res.status(400).json({ error: "All fields are required" });
+  if (!email || !name || !phone || !password || !username) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  try {
+
+    const decodedToken = jwt.decode(token);
+    const { projectId } = decodedToken;
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const existingUser = await userCollection.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({ error: "Email already used" });
     }
-  
-    try {
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = {
+      email,
+      name,
+      phone,
+      password: hashedPassword,
+      username,
+      accountCreated: new Date(),
+      projects: [],
+      toDoList: [],
+      isEmailVerified: false,
+    };
 
-      const decodedToken = jwt.decode(token);
+    // Insert the new user
+    const insertedUser = await userCollection.insertOne(newUser);
+    const secret = process.env.JWT_SECRET + hashedPassword;
+    const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
+    let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
 
-      const { projectId } = decodedToken;
-  
-      const db = client.db("ganttify");
-      const userCollection = db.collection("userAccounts");
-  
-
-      const existingUser = await userCollection.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ error: "Email already used" });
+    const transporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.USER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
       }
-  
+    });
 
-      const hashedPassword = await bcrypt.hash(password, 10);
-  
-      const newUser = {
-        email,
-        name,
-        phone,
-        password: hashedPassword,
-        username,
-        accountCreated: new Date(),
-        projects: [],
-        toDoList: [],
-        isEmailVerified: false,
-      };
-  
-      // Insert the new user
-      const insertedUser = await userCollection.insertOne(newUser);
-  
-      const secret = process.env.JWT_SECRET + hashedPassword;
-      const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
-  
-      let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
-  
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD
-        }
-      });
-  
-      let mailDetails = {
-        from: process.env.USER_EMAIL,
-        to: email,
-        subject: 'Verify Your Ganttify Account',
-        text: `Hello ${newUser.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-        html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
-      };
-  
-      transporter.sendMail(mailDetails, function (err, data) {
-        if (err) {
-          return res.status(500).json({ error: 'Error sending verification email' });
-        } else {
-          return res.status(200).json({ message: 'Verification email sent' });
-        }
-      });
-    } catch (error) {
-      console.error('An error has occurred:', error);
-      return res.status(500).json({ error });
-    }
-  });
+    let mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email,
+      subject: 'Verify Your Ganttify Account',
+      text: `Hello ${newUser.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
+      html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
+    };
 
+    transporter.sendMail(mailDetails, function (err, data) {
+      if (err) {
+        return res.status(500).json({ error: 'Error sending verification email' });
+      } else {
+        return res.status(200).json({ message: 'Verification email sent' });
+      }
+    });
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error });
+  }
+});
 
 router.post('/decode-token', (req, res) => {
   const { token } = req.body;
@@ -2401,8 +2311,6 @@ router.post('/decode-token', (req, res) => {
   }
 });
 
-
-
 router.get('/verify-invite/:token', async (req, res) => {
   const { token } = req.params;
 
@@ -2414,15 +2322,11 @@ router.get('/verify-invite/:token', async (req, res) => {
     }
 
     const { email, projectId } = decodedToken;
-
-
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const projectCollection = db.collection("projects");
     const teamCollection = db.collection("teams");
-
     const user = await userCollection.findOne({ email });
-
 
     if (!user) {
       return res.status(404).send("User does not exist");
@@ -2430,10 +2334,8 @@ router.get('/verify-invite/:token', async (req, res) => {
 
     const secret = process.env.JWT_SECRET + user.password;
 
-
     try {
       jwt.verify(token, secret);
-
 
       await userCollection.updateOne(
         { _id: user._id },
@@ -2463,7 +2365,6 @@ router.get('/verify-invite/:token', async (req, res) => {
 });
 
 router.put("/tasks/:id/dates", async (req, res) => {
-
   const { id } = req.params;
   const { dueDateTime, startDateTime } = req.body;
   let error = "";
@@ -2476,8 +2377,8 @@ router.put("/tasks/:id/dates", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
-
     const updateFields = {};
+    
     if (dueDateTime) {
       updateFields.dueDateTime = new Date(dueDateTime);
     }
@@ -2515,4 +2416,4 @@ router.get("/tasks/:id", async (req, res) => {
   }	
 });
 
-module.exports = router;	
+module.exports = router;
