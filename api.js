@@ -508,6 +508,7 @@ router.put("/tasks/:id", async (req, res) => {
   const updateFields = req.body;
   let error = "";
 
+  console.log(id)
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
     return res.status(400).json({ error });
@@ -537,6 +538,7 @@ router.put("/tasks/:id", async (req, res) => {
       { _id: new ObjectId(id) },
       { $set: updateFields },
     );
+    console.log("Updated task " + id);
     res.status(200).json(result);
   } catch (error) {
     console.error("Error updating task:", error);
@@ -2270,14 +2272,17 @@ router.put("/tasks/:id/dates", async (req, res) => {
   }
 });
 
-router.get("/tasks/:id", async (req, res) => {
+router.get("/fetchTask/:id", async (req, res) => {
   const { id } = req.params;
   try {
-
+    //console.log("fetching task: " + id);
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const task = await taskCollection.findOne({ _id: new ObjectId(id) });
+    //console.log("found task: " + task.taskTitle );
 	  if (!task) {return res.status(404).json({ error: "Task not found" });}
+    
+      res.status(200).json(task);
   } catch (error) {
     console.error("Error fetching task:", error);
     res.status(500).json({ error: "Internal server error" });
