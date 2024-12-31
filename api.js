@@ -673,7 +673,7 @@ router.put("/tasks/:id", async (req, res) => {
   const updateFields = req.body;
   let error = "";
 
-  console.log(id)
+  console.log(id);
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
     return res.status(400).json({ error });
@@ -687,7 +687,7 @@ router.put("/tasks/:id", async (req, res) => {
     // Convert any provided ObjectId fields
     if (updateFields.assignedTasksUsers) {
       updateFields.assignedTasksUsers = updateFields.assignedTasksUsers.map(
-        (id) => new ObjectId(id),
+        (id) => new ObjectId(id)
       );
     }
     if (updateFields.tiedProjectId) {
@@ -703,40 +703,141 @@ router.put("/tasks/:id", async (req, res) => {
     if (updateFields.taskCategory) {
       const categoryTitle = updateFields.taskCategory;
 
-   // Find the category by its name
-   const category = await taskCategoriesCollection.findOne({ categoryTitle });
+      // Find the category by its name
+      let category = await taskCategoriesCollection.findOne({ categoryTitle });
 
-   if (category) {
-     // If the category exists, update the task and add to the tasksUnder array
-     await taskCategoriesCollection.updateOne(
-       { categoryTitle },
-       { $push: { tasksUnder: new ObjectId(id) } } // Add task to tasksUnder field
-     );
-   } else {
-     // If category doesn't exist, create a new category and add the task under it
-     const newCategory = {
-       categoryTitle,
-       tasksUnder: [new ObjectId(id)],
-     };
+      if (category) {
+        // If the category exists, update the task and add it to the tasksUnder array
+        await taskCategoriesCollection.updateOne(
+          { categoryTitle },
+          { $push: { tasksUnder: new ObjectId(id) } } // Add task to tasksUnder field
+        );
+      } else {
+        // If the category doesn't exist, create a new category and add the task under it
+        const newCategory = {
+          categoryTitle,
+          tasksUnder: [new ObjectId(id)],
+        };
 
-     await taskCategoriesCollection.insertOne(newCategory);
-   }
+        const result = await taskCategoriesCollection.insertOne(newCategory);
+        category = result.ops[0];  // Retrieve the newly inserted category
+      }
 
-   // Update the task itself
-   updateFields.taskCategoryId = new ObjectId(category ? category._id : newCategory._id);
- }
+      // Update the task with the category ID
+      updateFields.taskCategoryId = new ObjectId(category._id);
+    }
 
- const result = await taskCollection.updateOne(
-   { _id: new ObjectId(id) },
-   { $set: updateFields },
- );
+    // Update the task itself
+    const result = await taskCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateFields }
+    );
 
- res.status(200).json(result);
-} catch (error) {
- console.error("Error updating task:", error);
- error = "Internal server error";
- res.status(500).json({ error });
-}
+    if (result.modifiedCount === 0) {
+      error = "Task not found or no changes made";
+      return res.status(404).json({ error });
+    }
+
+    res.status(200).json({ message: "Task updated successfully" });
+  } catch (error) {
+    console.error("Error updating task:", error);
+    error = "Internal server error";
+    res.status(500).json({ error });
+  }
+});
+
+
+//-------------> Update Task Category ONLY <------------//
+router.put("/tasks/:id/category", async (req, res) => {
+  const { id } = req.params;
+  const { taskCategory } = req.body;
+  let error = "";
+
+  if (!taskCategory) {
+    error = "Task category is required";
+    return res.status(400).json({ error });
+  }
+
+  try {
+    const db = client.db("ganttify");
+    const taskCollection = db.collection("tasks");
+    const taskCategoriesCollection = db.collection("task_categories");
+
+    // Find the category by its name
+    const category = await taskCategoriesCollection.findOne({ categoryTitle: taskCategory });
+
+    let categoryId;
+    if (category) {
+      // If the category exists, update the tasksUnder array
+      categoryId = category._id;
+      await taskCategoriesCollection.updateOne(
+        { categoryTitle: taskCategory },
+        { $addToSet: { tasksUnder: new ObjectId(id) } } // Prevent duplicates
+      );
+    } else {
+      // If category doesn't exist, create a new category and associate the task with it
+      const newCategory = {
+        categoryTitle: taskCategory,
+        tasksUnder: [new ObjectId(id)],
+      };
+
+      const insertResult = await taskCategoriesCollection.insertOne(newCategory);
+      categoryId = insertResult.insertedId;
+    }
+
+    // Update the task's category in the tasks collection
+    const result = await taskCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { taskCategory, taskCategoryId: new ObjectId(categoryId) } }
+    );
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error updating task category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+//-----------> Create Task Category <----------------//
+router.post("/taskcategories", async (req, res) => {
+  const { categoryTitle } = req.body;
+  let error = "";
+
+  if (!categoryTitle) {
+    error = "Category title is required";
+    return res.status(400).json({ error });
+  }
+
+  try {
+    const db = client.db("ganttify");
+    const taskCategoriesCollection = db.collection("task_categories");
+
+    // Step 1: Check if the category already exists
+    const existingCategory = await taskCategoriesCollection.findOne({ categoryTitle });
+
+    if (existingCategory) {
+      return res.status(200).json(existingCategory); // If category exists, return the existing category
+    }
+
+    // Step 2: If category doesn't exist, create a new one
+    const newCategory = {
+      categoryTitle,
+      tasksUnder: [],
+    };
+
+    const insertResult = await taskCategoriesCollection.insertOne(newCategory);
+
+    // Step 3: Return the newly created category
+    const createdCategory = await taskCategoriesCollection.findOne({
+      _id: insertResult.insertedId,
+    });
+
+    res.status(201).json(createdCategory); // Return the newly created category
+  } catch (error) {
+    console.error("Error creating task category:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 //-----------------> Delete Task <-----------------//
