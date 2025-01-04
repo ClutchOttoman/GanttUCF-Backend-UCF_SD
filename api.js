@@ -94,10 +94,8 @@ router.post("/register", async (req, res) => {
 	  var organization = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var timezone = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var pronouns = await encryptClient.encrypt("", {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var tempIdString = new ObjectId().toString();
-
+    
     const newTempUser = {
-      tempId: tempIdString,
 	    email: queryEncryptedEmail,
 	    name: enterName,
 	    phone: enterPhone,
@@ -119,10 +117,10 @@ router.post("/register", async (req, res) => {
     // For nodemailer.
     // Should use an encrypted email address.
     const secret = process.env.JWT_SECRET + enterPassword.toString();
-    const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
+    const token = jwt.sign({email: email}, secret, {expiresIn: "5m",} );
 
-    //let link = `http://206.81.1.248/verify-email/${email}/${token}`;
-    let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
+    let link = `http://206.81.1.248/verify-email/${email}/${token}`;
+    //let link = `http://localhost:5173/verify-email/${email}/${token}`; // for testing API localhost purposes only.
 
     const transporter = nodeMailer.createTransport({
       service: 'gmail',
@@ -164,10 +162,10 @@ router.get('/verify-email/:email/:token', async (req, res) => {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const tempCollection = db.collection("unverifiedUserAccounts");
-    console.log("Verify email API endpoint tempId = " + email);
 
     // Make an encrypted query.
-    const existingTempUser = await tempCollection.findOne({tempId: email});
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail});
 
     // Checks if the user is present in the unverified account database.
     if (!existingTempUser) {
@@ -183,7 +181,6 @@ router.get('/verify-email/:email/:token', async (req, res) => {
       jwt.verify(token, secret);
 
       // Encrypt data.
-      var enterEmail = await encryptClient.encrypt(existingTempUser.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
       var enterName = await encryptClient.encrypt(existingTempUser.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
       var enterPhone = await encryptClient.encrypt(existingTempUser.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
       var enterUsername = await encryptClient.encrypt(existingTempUser.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
@@ -193,7 +190,7 @@ router.get('/verify-email/:email/:token', async (req, res) => {
       var pronouns = await encryptClient.encrypt(existingTempUser.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
 
       const newUser = {
-        email: enterEmail,
+        email: queryEncryptedEmail,
         name: enterName,
         phone: enterPhone,
         username: enterUsername,
@@ -210,8 +207,8 @@ router.get('/verify-email/:email/:token', async (req, res) => {
 
       // Add verified user to the database and remove it from the temporary account.
       await userCollection.insertOne(newUser);
-      await tempCollection.deleteOne({tempId: email});
-      res.status(201).send("Account was successfully verified.");
+      await tempCollection.deleteOne({email: queryEncryptedEmail});
+      //res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
       
     } catch (error) {
       res.send("Invalid or expired token");
@@ -234,14 +231,49 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error });
   }
 
-  try {
 
+  try {
+    console.log("Hi")
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
 
     // Perform an encrypted query.
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     const verifiedUser = await userCollection.findOne({ email: enterEmail });
+    //const unverifiedUser = await tempCollection.findOne({ email: enterEmail});
+
+    // If found in the unverified database, initiate the registration process.
+    // if (unverifiedUser) {
+    //   const secret = process.env.JWT_SECRET + user.password;
+    //   const token = jwt.sign({ email: user.email }, secret, { expiresIn: "5m" });
+
+    //   let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-email/${email}/${token}`;
+
+    //   const transporter = nodeMailer.createTransport({
+    //     service: 'gmail',
+    //     auth: {
+    //       user: process.env.USER_EMAIL,
+    //       pass: process.env.EMAIL_PASSWORD
+    //     }
+    //   });
+
+    //   let mailDetails = {
+    //     from: process.env.USER_EMAIL,
+    //     to: email,
+    //     subject: 'Verify Your Ganttify Account',
+    //     text: `Hello ${user.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
+    //     html: `<p>Hello ${user.name},</p> <p>Please verify your Ganttify account by clicking the following link:</p> <a href="${link}" className="btn">Verify Account</a>`
+    //   };
+
+    //   transporter.sendMail(mailDetails, function (err, data) {
+    //     if (err) {
+    //       return res.status(500).json({ error: 'Error sending verification email' });
+    //     } else  {
+    //       return res.status(400).json({ error: 'Email not verified. Verification email sent again.' });
+    //     }
+    //   });
+    //   return;
+    // }
 
     // If user account is not found in the verified database.
     if (!verifiedUser) {
@@ -256,11 +288,13 @@ router.post("/login", async (req, res) => {
     error = "Invalid email or password";
     return res.status(401).json({ error });
   }
+
 	  console.log("successful login");
     const token = jwt.sign({ id: verifiedUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     // Encrypt data.
     var encryptEmail = await encryptClient.encrypt(verifiedUser.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var encryptId = await encryptClient.encrypt(verifiedUser._id, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var encryptName = await encryptClient.encrypt(verifiedUser.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var encryptPhone = await encryptClient.encrypt(verifiedUser.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var encryptUsername = await encryptClient.encrypt(verifiedUser.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
@@ -271,7 +305,7 @@ router.post("/login", async (req, res) => {
     
     res.status(200).json({
       token,
-      _id: verifiedUser._id,
+      _id: encryptId,
       email: encryptEmail,
       name: encryptName,
       username: encryptUsername,
@@ -291,8 +325,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-//-----------------> Forgot Password Endpoint <-----------------//
-// Retrieves the account via entered email account. Leads to the reset-password page.
+// Forgot password
 router.post('/forgot-password', async (req, res) => 
 {
   const {email} = req.body;
@@ -302,19 +335,15 @@ router.post('/forgot-password', async (req, res) =>
 
     const db = client.db('ganttify');
     const results = db.collection('userAccounts');
-
-    // Enter an encrpyted query.
-    var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    const user = await results.findOne({enterEmail});
+    const user = await results.findOne({email});
 
     if (user) {
       
       const secret = process.env.JWT_SECRET + user.password;
-      const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
+      const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "2m",} );
 
-      //let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
-      let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
-
+      let link = `https://ganttify-5b581a9c8167.herokuapp.com/reset-password/${user._id}/${token}`;
+     
       const transporter = nodeMailer.createTransport({
         service: 'gmail',
         auth: {
@@ -342,22 +371,26 @@ router.post('/forgot-password', async (req, res) =>
       return res.status(404).json({ error: 'User with that email address does not exist.' });
     }
 
+
   } catch (error) {
     console.error('An error has occurred:', error);
     return res.status(500).json({ error });
   } 
 });
+  
+router.get('/reset-password/:id/:token', async (req, res) => 
+{
 
-//-----------------> Password Reset Email Endpoint <-----------------//
-// Verifies that the email request for a password reset is legitimate.
-router.get('/reset-password/:id/:token', async (req, res) => {
   const { id, token } = req.params;
+
   try {
 
-    // Find the user.
+    const objectId = new ObjectId(id);
+  
     const db = client.db('ganttify');
     const results = db.collection('userAccounts');
-    const user = await results.findOne({_id: new ObjectId(id)});
+    const user = await results.findOne({_id: objectId});
+
 
     if (user) {
       const secret = process.env.JWT_SECRET + user.password;
@@ -365,213 +398,63 @@ router.get('/reset-password/:id/:token', async (req, res) => {
       try {
 
         jwt.verify(token, secret);
-        res.status(200).json({ message: "Password reset has been verified." });
-
+        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+  
       } catch (error) {
-        res.send("Password reset has not been verified.");
+        res.send("Not verified");
       }
-
-    } else {
-      return res.status(404).send("User does not exist.");
+    } 
+  
+    else{
+      return res.status(404).send("User does not exist");
     }
-
   } catch(error) {
     console.error('Error during password reset verification:', error);
     res.status(400).send("Invalid ID format");
   }
-  
-});
 
-//-----------------> Reset Password Endpoint <-----------------//
-// Endpoint where the user enters in their new password.
+});
+  
 router.post('/reset-password', async (req, res) => 
-  {
-    const { id, password } = req.body;
-    let error = '';
-  
-    try {
-      const db = client.db('ganttify');
-      const userCollection = db.collection('userAccounts');
-      const user = await userCollection.findOne({_id: new ObjectId(id)});
-  
-      if (user){
-        
-        // Hash new password before entering it in the database.
-        const hashedPassword = await bcrypt.hash(password, 10);
+{
+  const { id, password } = req.body;
 
-        // Compare the hashes to ensure that the new password is not the same as the old password.
-        const isPasswordChanged = await bcrypt.compare(password, user.password);
-        if (isPasswordChanged){
-          return res.status(406).json({error: "Please enter a new password."});
-        }
-
-        try {
-          await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: hashedPassword}});
-          res.status(200).json({ message: "Password has been changed successfully." });
-        } catch(error) {
-          return res.json({status: "error", data: error})
-        }
-  
-      } else {
-        error = 'User not found.';
-        return res.status(404).json({ error });
-      }
-  
-    } catch (error) {
-      console.error('Error occured during password reset:', error);
-      error = 'Internal server error';
-      res.status(500).json({ error });
-    } 
-});
-
-//-----------------> Edit User Profile Details Endpoint <-----------------//
-// Edits profile details that do not require second verifcation.
-router.post("/edit-user-profile-details", async (req, res) => {
-  const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
-  let error = "";
+  let error = '';
 
   try {
+    const db = client.db('ganttify');
+    const objectId = ObjectId.createFromHexString(id); 
+    const userCollection = db.collection('userAccounts');
+    const user = await userCollection.findOne({_id: objectId});
 
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
 
-    if (!user){res.status(404).send("User profile does not exist.");}
+    if (user){
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-    console.log("Old user details:\n");
-    console.log(user);
-
-    var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    
-    // Update only if necessary.
-    // upsert field ($or) determines if the update will perform.
-    // Approach taken from MongoDB documentation and here:
-    // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
-    await userCollection.updateOne(
-      {_id: new ObjectId(id), 
-        $or:
-        [
-          {name: {$ne: ["name", updateName]}},
-          {username: {$ne: ["username", updateUsername]}},
-          {phone: {$ne: ["phone", updatePhone]}},
-          {pronouns: {$ne: ["pronouns", updatePronouns]}},
-          {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
-          {organization: {$ne: ["organization", updateOrganization]}},
-          {timezone: {$ne: ["timezone", updateTimezone]}}
-        ]
-      },
-      {$set: 
-        {
-          name: updateName, 
-          username: updateName, 
-          phone: updateName, 
-          pronouns: updateName,
-          discordAccount: updateDiscord,
-          organization: updateOrganization,
-          timezone: updateTimezone
-        },
-      } 
-    );
-
-    const testChange = await userCollection.findOne({_id: new ObjectId(id)});
-    console.log("New user details:\n");
-    console.log(testChange); // debug
-    
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-
-});
-
-//-----------------> Edit Email Endpoint <-----------------//
-// Allows logged in users to change their email account.
-// Requires the user to know their password before proceeding.
-router.post("/edit-email", async (req, res) => {
-  const { id, token } = req.params;
-  
-  try {
-
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
-    if (!user){res.status(404).send("User does not exist.");}
-
-    const match = await bcrypt.compare(password, user.password);
-
-    // Checks password validity.
-    if (!match){res.status(401).send("Incorrect password. Please try again.");}
-
-    // Proceed with changing the email.
-    // This will send a verification email to the new account.
-    const secret = process.env.JWT_SECRET + user.password;
-    const token = jwt.sign({id: user._id}, secret, {expiresIn: "5m"});
-    let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
-
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
+      try {
+        await userCollection.updateOne({_id: objectId}, {$set: {password: hashedPassword}});
+        res.status(200).json({ message: "Password has been reset successfully" });
+      } catch(error) {
+        return res.json({status: "error", data: error})
       }
-    });
 
-    let mailDetails = {
-      from: process.env.USER_EMAIL,
-      to: email,
-      subject: 'Changing Your Ganttify Email Address',
-      text: `Hello ${user.name},\n We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email: ${link}`,
-      html: `<p>Hello ${user.name},</p> <p>We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Reset Password</a>`
-    };
+    } else {
+      error = 'User not found';
+      return res.status(400).json({ error });
+    }
 
-    transporter.sendMail(mailDetails, function (err, data) {
-      if (err) {
-        return res.status(500).json({ error: 'Error sending email.' });
-      } else {
-        return res.status(200).json({ message: 'Verification email sent to your new email address.' });
-      }
-    });
-
- 
   } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-
+    console.error('Error occured during password reset:', error);
+    error = 'Internal server error';
+    res.status(500).json({ error });
+  } 
 });
 
-router.post("/edit-email/:id/:token", async (req, res) => {
-  const {id, email, token} = req.body;
-
-  try {
-
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
-    if (!user){res.status(404).send("User does not exist.");}
-
-    
-
- 
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-
-});
-
-
-// let userList = [];
+let userList = [];
 // //-----------------> User List Endpoint <-----------------//
-// router.get("/userlist", (req, res) => {
-//   res.status(200).json({ users: userList });
-// });
+router.get("/userlist", (req, res) => {
+  res.status(200).json({ users: userList });
+});
 
 //-----------Read Users Endpoint----------------//
 router.post("/read/users", async (req, res) => {
@@ -659,7 +542,7 @@ const isValidPattern = (pattern) => {
 
 //------> Create Task & Added Task Category <-------//
 router.post('/createtask', async (req, res) => {
-  const {
+  let {
     description = '',
     dueDateTime,
     progress = 'Not Started',
@@ -673,6 +556,19 @@ router.post('/createtask', async (req, res) => {
     taskCategory = '' // Task category is optional
   } = req.body;
 
+  const taskCreatorIdBinary = new Binary(Buffer.from(taskCreatorId, 'base64'), 6); //6 for encrypted data
+
+  // Convert the keyId to Binary with BSON subtype 4
+  const keyBinary = new Binary(Buffer.from(keyId, 'base64'), 4); //4 for encryption key
+  
+  // Using binary versions of id and key for decryption.
+  const decryptedId = await encryptClient.decrypt(taskCreatorIdBinary, {
+    keyId: keyBinary,
+    algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic'
+  });
+
+  taskCreatorId = decryptedId;
+  
   // Validate required fields
   if (!dueDateTime || !taskTitle || !taskCreatorId || !startDateTime) {
     return res.status(400).json({
@@ -960,34 +856,44 @@ router.post("/taskcategories", async (req, res) => {
 
 //-----------------> Delete Task <-----------------//
 router.delete("/tasks/:id", async (req, res) => {
-  const { id } = req.params;
+  const { id: taskId } = req.params;
+  const { projectId: projectId } = req.body;
   let error = "";
 
+  console.log(taskId, projectId)
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
+    const projectsCollection = db.collection("projects");
 
-    const result = await taskCollection.deleteOne({ _id: new ObjectId(id) });
-    res.status(200).json(result);
+    //Deleting task in tasks collection
+    const taskDeleteResult = await taskCollection.deleteOne({ _id: new ObjectId(taskId) });
+    if (taskDeleteResult.deletedCount === 0) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    const projectUpdateResult = await projectsCollection.updateOne(
+      { 
+        _id: new ObjectId(projectId),
+        tasks: new ObjectId(taskId) // Ensure the taskId exists in the tasks array
+      },
+      { 
+        $pull: { 
+          tasks: new ObjectId(taskId) // Pull the task by taskId (ObjectId)
+        } 
+      }
+    );
+
+    if (projectUpdateResult.modifiedCount === 0) {
+      return res.status(404).json({ message: "Task not found in project" });
+    }
+    
+    res.status(200).json({ message: "Task deleted successfully from both task and project collections" });
+    
   } catch (error) {
     console.error("Error deleting task:", error);
     error = "Internal server error";
     res.status(500).json({ error });
-  }
-});
-
-// --------------> Get all Task Categories <-----------//
-router.get('/taskcategories', async (req, res) => {
-  try {
-    const db = client.db("ganttify");
-    const taskCategoriesCollection = db.collection("task_categories");
-
-    const taskCategories = await taskCategoriesCollection.find().toArray(); // Fetch all categories
-
-    res.status(200).json(taskCategories); // Return the task categories as a JSON array
-  } catch (error) {
-    console.error("Error fetching task categories:", error);
-    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1104,12 +1010,26 @@ router.post("/createproject", async (req, res) => {
   } = req.body;
   let error = "";
 
+
   if (!nameProject || !founderId) {
     error = "Project name and founder ID are required";
     return res.status(400).json({ error });
   }
 
+  const founderIdBinary = new Binary(Buffer.from(founderId, 'base64'), 6); //6 for encrypted data
+
+  // Convert the keyId to Binary with BSON subtype 4
+  const keyBinary = new Binary(Buffer.from(keyId, 'base64'), 4); //4 for encryption key
+  
+  // Using binary versions of id and key for decryption.
+  const decryptedId = await encryptClient.decrypt(founderIdBinary, {
+    keyId: keyBinary,
+    algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic'
+  });
+  
+  console.log(decryptedId)
   try {
+    console.log(req.body)
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
     const teamCollection = db.collection("teams");
@@ -1121,14 +1041,14 @@ router.post("/createproject", async (req, res) => {
       team: new ObjectId(),
       tasks: [], 
       isVisible,
-      founderId: new ObjectId(founderId),
+      founderId: new ObjectId(decryptedId),
       flagDeletion,
       group: [new ObjectId()],
     };
 
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
-    const newTeam = {founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId],};
+    const newTeam = {founderId: new ObjectId(decryptedId), editors: [], members: [], projects: [projectId],};
     const team = await teamCollection.insertOne(newTeam);
 
     await projectCollection.updateOne(
@@ -1137,7 +1057,7 @@ router.post("/createproject", async (req, res) => {
     );
 
     await userCollection.updateOne(
-      { _id: new ObjectId(founderId) },
+      { _id: new ObjectId(decryptedId) },
       { $push: { projects: projectId } }
     );
 
@@ -1739,6 +1659,21 @@ router.post("/searchusers", async (req, res) => {
 router.post("/search/projects", async (req, res) => {
 
     const { founderId, title, sortBy = "dateCreated" } = req.body;
+
+    const founderIdBinary = new Binary(Buffer.from(founderId, 'base64'), 6); //6 for encrypted data
+
+    // Convert the keyId to Binary with BSON subtype 4
+    const keyBinary = new Binary(Buffer.from(keyId, 'base64'), 4); //4 for encryption key
+    
+    // Using binary versions of id and key for decryption.
+    const decryptedId = await encryptClient.decrypt(founderIdBinary, {
+      keyId: keyBinary,
+      algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic'
+    });
+  
+    
+    console.log(req.body)
+    
   
     try {
       const db = client.db("ganttify");
@@ -1747,9 +1682,9 @@ router.post("/search/projects", async (req, res) => {
   
       const teams = await teamCollection.find({
         $or: [
-          { founderId: new ObjectId(founderId) },
-          { editors: new ObjectId(founderId) },
-          { members: new ObjectId(founderId) }
+          { founderId: new ObjectId(decryptedId) },
+          { editors: new ObjectId(decryptedId) },
+          { members: new ObjectId(decryptedId) }
         ]
       }).toArray();
   
@@ -1761,7 +1696,7 @@ router.post("/search/projects", async (req, res) => {
   
       const query = {
         $or: [
-          { founderId: new ObjectId(founderId) },
+          { founderId: new ObjectId(decryptedId) },
           { team: { $in: teamIds } }
         ],
         nameProject: { $regex: title, $options: "i" }
@@ -1839,10 +1774,21 @@ router.post("/search/tasks", async (req, res) => {
   const {founderId, name, dueDate, sortBy = "completionPercentage" } = req.body;
   const query = {};
 
+  const founderIdBinary = new Binary(Buffer.from(founderId, 'base64'), 6); //6 for encrypted data
+
+  // Convert the keyId to Binary with BSON subtype 4
+  const keyBinary = new Binary(Buffer.from(keyId, 'base64'), 4); //4 for encryption key
+  
+  // Using binary versions of id and key for decryption.
+  const decryptedId = await encryptClient.decrypt(founderIdBinary, {
+    keyId: keyBinary,
+    algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic'
+  });
+
   if (!dueDate) {
-    query.description = { founderId:founderId,$regex: name, $options: "i" };
+    query.description = { founderId:decryptedId,$regex: name, $options: "i" };
   } else {
-    query.description = { founderId: founderId, $gte: new Date(dueDate) };
+    query.description = { founderId:decryptedId, $gte: new Date(dueDate) };
   }
   console.log(query);
 
@@ -2301,6 +2247,7 @@ router.get('/getProjectDetails/:projectId', async (req, res) => {
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
     const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+    
 
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
@@ -2309,6 +2256,9 @@ router.get('/getProjectDetails/:projectId', async (req, res) => {
     if (!project.team || !ObjectId.isValid(project.team)) {
       return res.status(404).json({ error: "Invalid team ID in project" });
     }
+
+    var encryptId = await encryptClient.encrypt(project.founderId, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    project.founderId = encryptId
 
     const teamCollection = db.collection("teams");
     const team = await teamCollection.findOne({ _id: new ObjectId(project.team) });
