@@ -7,7 +7,6 @@ const jwt = require("jsonwebtoken");
 const nodeMailer = require("nodemailer");
 const file = require("fs");
 const path = require('path');
-const crypto = require("crypto");
 require("dotenv").config();
 
 const router = express.Router();
@@ -121,7 +120,7 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + enterPassword.toString();
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
-    //let link = `http://206.81.1.248/verify-email/${email}/${token}`;
+    //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
     let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
     const transporter = nodeMailer.createTransport({
@@ -156,7 +155,7 @@ router.post("/register", async (req, res) => {
 
 //-----------------> Verify Registration Email Endpoint <-----------------//
 router.get('/verify-email/:email/:token', async (req, res) => {
-  // NOTE: Email should already be an ecrypted parameter.
+  // NOTE: Email should already be an encrypted parameter.
   const { email, token } = req.params;
 
   try {
@@ -301,19 +300,19 @@ router.post('/forgot-password', async (req, res) =>
   try{
 
     const db = client.db('ganttify');
-    const results = db.collection('userAccounts');
+    const userCollection = db.collection('userAccounts');
 
     // Enter an encrpyted query.
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    const user = await results.findOne({enterEmail});
+    const user = await userCollection.findOne({email: enterEmail});
 
     if (user) {
       
       const secret = process.env.JWT_SECRET + user.password;
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
-      //let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
-      let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
+      let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
+      //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
       const transporter = nodeMailer.createTransport({
         service: 'gmail',
@@ -327,8 +326,8 @@ router.post('/forgot-password', async (req, res) =>
         from: process.env.USER_EMAIL,
         to: email,
         subject: 'Reset Your Ganttify Password',
-        text: `Hello ${user.name},\n We recieved a request to reset your Ganttify password. Click the link to reset your password: ${link}`,
-        html: `<p>Hello ${user.name},</p> <p>We recieved a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
+        text: `Hello ${user.name},\n We received a request to reset your Ganttify password. Click the link to reset your password: ${link}`,
+        html: `<p>Hello ${user.name},</p> <p>We received a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
       };
 
       transporter.sendMail(mailDetails, function (err, data) {
@@ -352,23 +351,24 @@ router.post('/forgot-password', async (req, res) =>
 // Verifies that the email request for a password reset is legitimate.
 router.get('/reset-password/:id/:token', async (req, res) => {
   const { id, token } = req.params;
+
   try {
+    console.log("Entered /reset-password/:id/:token API endpoint.");
 
     // Find the user.
     const db = client.db('ganttify');
-    const results = db.collection('userAccounts');
-    const user = await results.findOne({_id: new ObjectId(id)});
+    const userCollection = db.collection('userAccounts');
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
 
     if (user) {
       const secret = process.env.JWT_SECRET + user.password;
-  
       try {
 
         jwt.verify(token, secret);
-        res.status(200).json({ message: "Password reset has been verified." });
+        return res.status(200).json({ message: "Password reset has been verified." });
 
       } catch (error) {
-        res.send("Password reset has not been verified.");
+        return res.send("Password reset has not been verified.");
       }
 
     } else {
@@ -377,7 +377,7 @@ router.get('/reset-password/:id/:token', async (req, res) => {
 
   } catch(error) {
     console.error('Error during password reset verification:', error);
-    res.status(400).send("Invalid ID format");
+    return res.status(400).send("Invalid ID format");
   }
   
 });
@@ -388,6 +388,7 @@ router.post('/reset-password', async (req, res) =>
   {
     const { id, password } = req.body;
     let error = '';
+    console.log("Entered /reset-password API endpoint.");
   
     try {
       const db = client.db('ganttify');
@@ -395,15 +396,18 @@ router.post('/reset-password', async (req, res) =>
       const user = await userCollection.findOne({_id: new ObjectId(id)});
   
       if (user){
-        
-        // Hash new password before entering it in the database.
-        const hashedPassword = await bcrypt.hash(password, 10);
 
         // Compare the hashes to ensure that the new password is not the same as the old password.
         const isPasswordChanged = await bcrypt.compare(password, user.password);
-        if (isPasswordChanged){
-          return res.status(406).json({error: "Please enter a new password."});
+
+        console.log("isPassword = " + isPasswordChanged);
+
+        if (isPasswordChanged == true){
+          return res.status(406).json({ message: "Please enter a new password." });
         }
+
+        // Hash new password before entering it in the database.
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
           await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: hashedPassword}});
@@ -414,13 +418,13 @@ router.post('/reset-password', async (req, res) =>
   
       } else {
         error = 'User not found.';
-        return res.status(404).json({ error });
+        return res.status(404).json({ message: "User not found." });
       }
   
     } catch (error) {
       console.error('Error occured during password reset:', error);
       error = 'Internal server error';
-      res.status(500).json({ error });
+      res.status(500).json({ message: error });
     } 
 });
 
@@ -436,10 +440,11 @@ router.post("/edit-user-profile-details", async (req, res) => {
     const userCollection = db.collection("userAccounts");
     const user = await userCollection.findOne({_id: new ObjectId(id)});
 
-    if (!user){res.status(404).send("User profile does not exist.");}
-
-    console.log("Old user details:\n");
-    console.log(user);
+    if (!user){return res.status(404).send("User profile does not exist.");}
+    
+    // Debugging purposes only.
+    // console.log("Old user details:");
+    // console.log(user);
 
     var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
@@ -469,9 +474,9 @@ router.post("/edit-user-profile-details", async (req, res) => {
       {$set: 
         {
           name: updateName, 
-          username: updateName, 
-          phone: updateName, 
-          pronouns: updateName,
+          username: updateUsername, 
+          phone: updatePhone, 
+          pronouns: updatePronouns,
           discordAccount: updateDiscord,
           organization: updateOrganization,
           timezone: updateTimezone
@@ -479,9 +484,12 @@ router.post("/edit-user-profile-details", async (req, res) => {
       } 
     );
 
-    const testChange = await userCollection.findOne({_id: new ObjectId(id)});
-    console.log("New user details:\n");
-    console.log(testChange); // debug
+    // Debugging purposes only.
+    // const testChange = await userCollection.findOne({_id: new ObjectId(id)});
+    // console.log("New user details:\n");
+    // console.log(testChange); // debug.
+
+    return res.status(200).send("User profile has been successfully updated.");
     
   } catch (error) {
     console.error('An error has occurred:', error);
@@ -494,25 +502,55 @@ router.post("/edit-user-profile-details", async (req, res) => {
 // Allows logged in users to change their email account.
 // Requires the user to know their password before proceeding.
 router.post("/edit-email", async (req, res) => {
-  const { id, token } = req.params;
+  const { id, email, password } = req.body;
   
   try {
 
+    // console.log("Edit email API endpoint; old email = " + email);
+
+    // Check to see if the email is already taken by another email. Encrypt the new email.
+    var newEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
+    const unverifiedEmailCollection = db.collection("unverifiedEmails");
     const user = await userCollection.findOne({_id: new ObjectId(id)});
-    if (!user){res.status(404).send("User does not exist.");}
+    const existEmail = await userCollection.findOne({email: newEmail});
 
-    const match = await bcrypt.compare(password, user.password);
+    // Check if the user exists.
+    if (!user){return res.status(404).send("User does not exist.");}
+
+    // Check if the new email address entered is already being used.
+    if (existEmail){return res.status(406).send("Email address entered is already being used. Please choose another email address.");}
 
     // Checks password validity.
-    if (!match){res.status(401).send("Incorrect password. Please try again.");}
+    const match = await bcrypt.compare(password, user.password);
+    if (!match){return res.status(401).send("Incorrect password. Please try again.");}
 
     // Proceed with changing the email.
     // This will send a verification email to the new account.
     const secret = process.env.JWT_SECRET + user.password;
     const token = jwt.sign({id: user._id}, secret, {expiresIn: "5m"});
-    let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
+
+    // Temporarily collect the new email in the user document holding the temporary email address change.
+    // Ensure that TTL exists. 
+    await unverifiedEmailCollection.createIndex(
+      { "requestedEmailChangeTime": 1 },
+      {
+        expireAfterSeconds: 300, // expires in 5 minutes.
+      }
+    );
+
+    // Check to see if a email request was already submitted.
+    var existEarlier = await unverifiedEmailCollection.findOne({tempId: id});
+    if (existEarlier){return res.status(400).send("An email change request has already been sent. Please wait at least 5 minutes before submitting another request.");}
+
+    // Insert the temporary information.
+    const temp = {tempId: user._id, email: newEmail, requestedEmailChangeTime: new Date()};
+    await unverifiedEmailCollection.insertOne(temp);
+
+    //let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
+    let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
     const transporter = nodeMailer.createTransport({
       service: 'gmail',
@@ -527,7 +565,7 @@ router.post("/edit-email", async (req, res) => {
       to: email,
       subject: 'Changing Your Ganttify Email Address',
       text: `Hello ${user.name},\n We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email: ${link}`,
-      html: `<p>Hello ${user.name},</p> <p>We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Reset Password</a>`
+      html: `<p>Hello ${user.name},</p> <p>We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Change Email</a>`
     };
 
     transporter.sendMail(mailDetails, function (err, data) {
@@ -546,19 +584,48 @@ router.post("/edit-email", async (req, res) => {
 
 });
 
-router.post("/edit-email/:id/:token", async (req, res) => {
-  const {id, email, token} = req.body;
-
+//-----------------> Verify Email Change Endpoint <-----------------//
+// This is sent to the new email adddress to verify the change.
+router.get("/edit-email/:email/:token", async (req, res) => {
+  const {email, token} = req.params;
+  // Note: email should already be an encrypted parameter.
   try {
-
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
-    if (!user){res.status(404).send("User does not exist.");}
+    const unverifiedEmailCollection = db.collection("unverifiedEmails");
+    const user = await userCollection.findOne({_id: new ObjectId(email)});
 
-    
+    // Check that the user exists.
+    if (!user){return res.status(404).send("User does not exist.");}
 
- 
+    try {
+
+      const secret = process.env.JWT_SECRET + user.password;
+      jwt.verify(token, secret);
+      
+      // Retrieve the new email temporarily saved.
+      var tempInfo = await unverifiedEmailCollection.findOne({tempId: user._id});
+
+      // Validate that the temporary email entered exists.
+      if (!tempInfo){
+        return res.status(404).send("Email change information not found.");
+      }
+
+      // console.log("Edit email verify API endpoint; new email = " + tempInfo.email);
+      var newEmail = await encryptClient.encrypt(tempInfo.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
+      // Update the email address.
+      await userCollection.updateOne({_id: new ObjectId(email)}, {$set: {email: newEmail}});
+
+      // Delete the temporary save.
+      await unverifiedEmailCollection.deleteOne({tempId: user._id});
+      return res.status(200).json({ message: "Email has been changed successfully." });
+
+    } catch (error){
+      console.log(error);
+      return res.status(401).send("Invalid or expired token.");
+    }
+
   } catch (error) {
     console.error('An error has occurred:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -566,12 +633,11 @@ router.post("/edit-email/:id/:token", async (req, res) => {
 
 });
 
-
 // let userList = [];
 // //-----------------> User List Endpoint <-----------------//
-// router.get("/userlist", (req, res) => {
-//   res.status(200).json({ users: userList });
-// });
+router.get("/userlist", (req, res) => {
+  res.status(200).json({ users: userList });
+});
 
 //-----------Read Users Endpoint----------------//
 router.post("/read/users", async (req, res) => {
