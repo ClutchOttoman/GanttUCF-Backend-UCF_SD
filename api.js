@@ -1720,13 +1720,39 @@ router.delete("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     
+    const email = user.email;
     const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
 
     if (deleteResult.deletedCount === 0) {
       return res.status(400).json({ error: "Failed to delete user" });
     }
 
-    res.status(200).json({ message: "User account deleted successfully" });
+    // Configure Nodemailer transport
+    const transporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.USER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    // Send an email notification
+    let mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email, 
+      subject: "Account Deletion",
+      text: 'Hello,\n\nYour account has been deleted from our system.\n\nWe are sorry to see you go!',
+    };
+
+     transporter.sendMail(mailDetails, (err, info) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error sending email' });
+      } else {
+        return res.status(200).json({ message: 'Account and associated data moved to deleted collections successfully' });
+      }
+    });
+
+    //res.status(200).json({ message: "User account deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
     res.status(500).json({ error: "Internal server error" });
