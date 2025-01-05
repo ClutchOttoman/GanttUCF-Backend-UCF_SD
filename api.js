@@ -1706,6 +1706,116 @@ router.put("/user/:userId", async (req, res) => {
 });
 
 
+// Endpoint to initiate account deletion
+router.post("/user/request-delete/:userId", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+
+    // Validate that the user exists
+    const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const email = user.email;
+    const secret = process.env.JWT_SECRET + user.password;
+    const token = jwt.sign({ email: email }, secret, { expiresIn: "5m" }); // Token valid for 5 minutes
+
+    // Configure Nodemailer transport
+    const transporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.USER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    // const link = `${process.env.FRONTEND_URL}/confirm-delete/${userId}/${token}`;
+    let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+    let mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email,
+      subject: "Confirm Account Deletion",
+      text: `Hello,\n\nTo confirm the deletion of your account, please click the link below:\n\n${link}\n\nIf you did not request this, please ignore this email.`,
+      html: `<p>Hello,</p> <p>To confirm the deletion of your account, please click the link below:\n</p> <a href="${link}" className="btn">Delete Account</a> <p>If you did not request this, please ignore this email.</p>`,
+    };
+
+    transporter.sendMail(mailDetails, (err, info) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error sending email' });
+      } else {
+        return res.status(200).json({ message: 'Confirmation email sent successfully.' });
+      }
+    });
+  } catch (error) {
+    console.error("Error initiating account deletion:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Endpoint to confirm and delete the account
+router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
+  const { userId, token } = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+
+    const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const secret = process.env.JWT_SECRET + user.password;
+
+    try {
+      jwt.verify(token, secret);
+      // Proceed with deletion
+      const email = user.email;
+      const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
+
+      if (deleteResult.deletedCount === 0) {
+        return res.status(400).json({ error: "Failed to delete user" });
+      }
+
+      // Configure Nodemailer transport
+      const transporter = nodeMailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.USER_EMAIL,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+
+      // Send an email notification
+      let mailDetails = {
+        from: process.env.USER_EMAIL,
+        to: email, 
+        subject: "Account Deletion",
+        text: 'Hello,\n\nYour account has been deleted from our system.\n\nWe are sorry to see you go!',
+      };
+
+      transporter.sendMail(mailDetails, (err, info) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error sending email' });
+        } else {
+          return res.status(200).json({ message: 'Account and associated data moved to deleted collections successfully' });
+        }
+      });
+    }catch (error) {
+      console.error("Token verification failed:", error);
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }    
+  } catch (error) {
+    console.error("Error confirming account deletion:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 // -----------------> Delete a specific user <-----------------//
 router.delete("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
