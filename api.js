@@ -1654,11 +1654,43 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Update the user with the new data
+    // Encrypt the fields before updating
+    const encryptedName = name
+      ? await encryptClient.encrypt(name, {
+          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+        })
+      : user.name;
+
+    const encryptedEmail = email
+      ? await encryptClient.encrypt(email, {
+          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+        })
+      : user.email;
+
+    const encryptedPhone = phone
+      ? await encryptClient.encrypt(phone, {
+          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
+          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+        })
+      : user.phone;
+
+    // Update the user with encrypted data
     const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name, email, phone } }
+      {
+        $set: {
+          name: encryptedName,
+          email: encryptedEmail,
+          phone: encryptedPhone,
+        },
+      }
     );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({ error: "Failed to update user details" });
+    }
 
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
@@ -1672,6 +1704,7 @@ router.put("/user/:userId", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 // -----------------> Delete a specific user <-----------------//
 router.delete("/user/:userId", async (req, res) => {
