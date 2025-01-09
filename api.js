@@ -8,6 +8,8 @@ const nodeMailer = require("nodemailer");
 const file = require("fs");
 const path = require('path');
 require("dotenv").config();
+const {google} = require("googleapis");
+const OAuth2 = google.auth.OAuth2;
 
 const router = express.Router();
 const url = process.env.MONGODB_URI;
@@ -42,6 +44,44 @@ let client;
 
 // For CSFLE explicit encryption.
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
+
+// Set up OAuth2 client and returns a secure transporter.
+// Use this transporter for any email sent.
+const createSecureOAuth2Transporter = async () => {
+
+  try {
+
+    const oAuth2Client = new OAuth2(process.env.CLIENT_ID, process.env.CLIENT_SECRET, "https://developers.google.com/oauthplayground");
+    oAuth2Client.setCredentials({refresh_token: process.env.REFRESH_TOKEN});
+  
+    // Get access token.
+    const accessToken = await new Promise((resolve, reject) => {
+      oAuth2Client.getAccessToken((err, token) => {
+        if (err) {reject();}
+        resolve(token);
+      });
+    });
+  
+    const secureTransporter = nodeMailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: "OAuth2",
+        user: process.env.USER_EMAIL,
+        accessToken,
+        clientId: process.env.CLIENT_ID,
+        clientSecret: process.env.CLIENT_SECRET,
+        refreshToken: process.env.REFRESH_TOKEN,
+      }
+    });
+  
+    return secureTransporter;
+    
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+
+};
 
 //////////////
 // User profile details and account security endpoints.
@@ -123,13 +163,9 @@ router.post("/register", async (req, res) => {
     //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
     let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    // Use secure OAuth2 transporter.
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
       from: process.env.USER_EMAIL,
@@ -139,7 +175,7 @@ router.post("/register", async (req, res) => {
       html: `<p>Hello ${name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
     };
 
-    transporter.sendMail(mailDetails, function (err, data) {
+    secureTransporter.sendMail(mailDetails, function (err, data) {
       if (err) {
         return res.status(500).json({ error: 'Error sending verification email.' });
       } else {
@@ -163,7 +199,6 @@ router.get('/verify-email/:email/:token', async (req, res) => {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const tempCollection = db.collection("unverifiedUserAccounts");
-    console.log("Verify email API endpoint tempId = " + email);
 
     // Make an encrypted query.
     const existingTempUser = await tempCollection.findOne({tempId: email});
@@ -506,8 +541,6 @@ router.post("/edit-email", async (req, res) => {
   
   try {
 
-    // console.log("Edit email API endpoint; old email = " + email);
-
     // Check to see if the email is already taken by another email. Encrypt the new email.
     var newEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
 
@@ -633,7 +666,7 @@ router.get("/edit-email/:email/:token", async (req, res) => {
 
 });
 
-// let userList = [];
+let userList = [];
 // //-----------------> User List Endpoint <-----------------//
 router.get("/userlist", (req, res) => {
   res.status(200).json({ users: userList });
@@ -644,35 +677,39 @@ router.post("/read/users", async (req, res) => {
     const { users } = req.body;
     let error = "";
     var usersInfo = [];
+
+    console.log();
     
     if (!users) {
-        error = "User ids are required";
-        return res.status(400).json({ error });
+      error = "User ids are required";
+      return res.status(400).json({ error });
     }
   
     try {
-        for(let i = 0;i<users.length;i++){
-            const db = client.db("ganttify");
-            const results = db.collection("userAccounts");
-        
-          
-            const user = await results.findOne({ _id:new ObjectId(users[i])});
-            usersInfo.push(user);
-        }
+      for(let i = 0;i<users.length;i++){
 
-        if(!userList){
-            error = "no users found";
-            res.status(400).json({error});
-        }
-        else{
-            res.status(200).json({usersInfo,error});
-        }
+        const db = client.db("ganttify");
+        const results = db.collection("userAccounts");
+
+        // Use user ids to find the user information.
+        const user = await results.findOne({ _id:new ObjectId(users[i])});
+        usersInfo.push(user);
+
+      }
+
+      if(!userList){
+        error = "no users found";
+        res.status(400).json({error});
+      }
+      else{
+        res.status(200).json({usersInfo,error});
+      }
         
     }
     catch (error) {
-        console.error("Login error:", error);
-        error = "Internal server error";
-        res.status(500).json({ error });
+      console.error("Login error:", error);
+      error = "Internal server error";
+      res.status(500).json({ error });
     }
   });
 
@@ -736,7 +773,8 @@ router.post('/createtask', async (req, res) => {
     startDateTime,
     color = '#DC6B2C',
     pattern = '',
-    taskCategory = '' // Task category is optional
+    taskCategory = '', // Task category is optional
+    dependentTasks = [] // Stores all other task ids who are dependent on this task being done.
   } = req.body;
 
   // Validate required fields
@@ -1654,43 +1692,11 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Encrypt the fields before updating
-    const encryptedName = name
-      ? await encryptClient.encrypt(name, {
-          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        })
-      : user.name;
-
-    const encryptedEmail = email
-      ? await encryptClient.encrypt(email, {
-          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        })
-      : user.email;
-
-    const encryptedPhone = phone
-      ? await encryptClient.encrypt(phone, {
-          keyId: new Binary(Buffer.from(keyId, "base64"), 4),
-          algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        })
-      : user.phone;
-
-    // Update the user with encrypted data
+    // Update the user with the new data
     const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      {
-        $set: {
-          name: encryptedName,
-          email: encryptedEmail,
-          phone: encryptedPhone,
-        },
-      }
+      { $set: { name, email, phone } }
     );
-
-    if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ error: "Failed to update user details" });
-    }
 
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
@@ -1704,7 +1710,6 @@ router.put("/user/:userId", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // Endpoint to initiate account deletion
 router.post("/user/request-delete/:userId", async (req, res) => {
@@ -1815,7 +1820,6 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
   }
 });
 
-
 // -----------------> Delete a specific user <-----------------//
 router.delete("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
@@ -1830,39 +1834,13 @@ router.delete("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     
-    const email = user.email;
     const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
 
     if (deleteResult.deletedCount === 0) {
       return res.status(400).json({ error: "Failed to delete user" });
     }
 
-    // Configure Nodemailer transport
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
-
-    // Send an email notification
-    let mailDetails = {
-      from: process.env.USER_EMAIL,
-      to: email, 
-      subject: "Account Deletion",
-      text: 'Hello,\n\nYour account has been deleted from our system.\n\nWe are sorry to see you go!',
-    };
-
-     transporter.sendMail(mailDetails, (err, info) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error sending email' });
-      } else {
-        return res.status(200).json({ message: 'Account and associated data moved to deleted collections successfully' });
-      }
-    });
-
-    //res.status(200).json({ message: "User account deleted successfully" });
+    res.status(200).json({ message: "User account deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
     res.status(500).json({ error: "Internal server error" });
