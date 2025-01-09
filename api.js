@@ -349,13 +349,8 @@ router.post('/forgot-password', async (req, res) =>
       let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
       //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD
-        }
-      });
+      const secureTransporter = await createSecureOAuth2Transporter();
+      if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
       let mailDetails = {
         from: process.env.USER_EMAIL,
@@ -365,7 +360,7 @@ router.post('/forgot-password', async (req, res) =>
         html: `<p>Hello ${user.name},</p> <p>We received a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
       };
 
-      transporter.sendMail(mailDetails, function (err, data) {
+      secureTransporter.sendMail(mailDetails, function (err, data) {
         if (err) {
           return res.status(500).json({ error: 'Error sending email' });
         } else {
@@ -585,13 +580,8 @@ router.post("/edit-email", async (req, res) => {
     //let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
     let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
       from: process.env.USER_EMAIL,
@@ -601,7 +591,7 @@ router.post("/edit-email", async (req, res) => {
       html: `<p>Hello ${user.name},</p> <p>We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Change Email</a>`
     };
 
-    transporter.sendMail(mailDetails, function (err, data) {
+    secureTransporter.sendMail(mailDetails, function (err, data) {
       if (err) {
         return res.status(500).json({ error: 'Error sending email.' });
       } else {
@@ -667,7 +657,7 @@ router.get("/edit-email/:email/:token", async (req, res) => {
 });
 
 let userList = [];
-// //-----------------> User List Endpoint <-----------------//
+//-----------------> User List Endpoint <-----------------//
 router.get("/userlist", (req, res) => {
   res.status(200).json({ users: userList });
 });
@@ -1545,14 +1535,8 @@ router.delete("/projects/:id", async (req, res) => {
     // Delete the project from the main collection
     await projectCollection.deleteOne({ _id: new ObjectId(id) });
 
-    // Configure Nodemailer transport
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     // Send an email notification
     let mailDetails = {
@@ -1562,7 +1546,7 @@ router.delete("/projects/:id", async (req, res) => {
       text: `Hello,\n\nYour project "${project.nameProject}" has been moved to the Recently Deleted Projects collection. It will remain there for 30 days before permanent deletion.\n\nBest regards,\nThe Ganttify Team`,
     };
 
-     transporter.sendMail(mailDetails, (err, info) => {
+    secureTransporter.sendMail(mailDetails, (err, info) => {
       if (err) {
         return res.status(500).json({ error: 'Error sending email' });
       } else {
@@ -1729,14 +1713,9 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const secret = process.env.JWT_SECRET + user.password;
     const token = jwt.sign({ email: email }, secret, { expiresIn: "5m" }); // Token valid for 5 minutes
 
-    // Configure Nodemailer transport
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    // Configure Nodemailer transport.
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     // const link = `${process.env.FRONTEND_URL}/confirm-delete/${userId}/${token}`;
     let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
@@ -1748,7 +1727,7 @@ router.post("/user/request-delete/:userId", async (req, res) => {
       html: `<p>Hello,</p> <p>To confirm the deletion of your account, please click the link below:\n</p> <a href="${link}" className="btn">Delete Account</a> <p>If you did not request this, please ignore this email.</p>`,
     };
 
-    transporter.sendMail(mailDetails, (err, info) => {
+    secureTransporter.sendMail(mailDetails, (err, info) => {
       if (err) {
         return res.status(500).json({ error: 'Error sending email' });
       } else {
@@ -1786,14 +1765,9 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
         return res.status(400).json({ error: "Failed to delete user" });
       }
 
-      // Configure Nodemailer transport
-      const transporter = nodeMailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.USER_EMAIL,
-          pass: process.env.EMAIL_PASSWORD
-        }
-      });
+      // Configure Nodemailer transport.
+      const secureTransporter = await createSecureOAuth2Transporter();
+      if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
       // Send an email notification
       let mailDetails = {
@@ -1803,7 +1777,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
         text: 'Hello,\n\nYour account has been deleted from our system.\n\nWe are sorry to see you go!',
       };
 
-      transporter.sendMail(mailDetails, (err, info) => {
+      secureTransporter.sendMail(mailDetails, (err, info) => {
         if (err) {
           return res.status(500).json({ error: 'Error sending email' });
         } else {
@@ -2575,13 +2549,8 @@ router.post('/invite-user', async (req, res) => {
     
     const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
 
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     const mailDetails = {
       from: process.env.USER_EMAIL,
@@ -2591,7 +2560,7 @@ router.post('/invite-user', async (req, res) => {
       html: `<p>Hello,</p><p>You have been invited to join a project on Ganttify. Click the button below to ${user ? 'accept the invitation' : 'create an account and join'}:</p><a href="${link}" class="btn">Join Ganttify</a>`,
     };
 
-    transporter.sendMail(mailDetails, (err, data) => {
+    secureTransporter.sendMail(mailDetails, (err, data) => {
 
       if (err) {
         return res.status(500).json({ error: 'Error sending email' });
@@ -2695,13 +2664,8 @@ router.post("/register/:token", async (req, res) => {
     const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
     let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
 
-    const transporter = nodeMailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.USER_EMAIL,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    const secureTransporter = await createSecureOAuth2Transporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
       from: process.env.USER_EMAIL,
@@ -2711,7 +2675,7 @@ router.post("/register/:token", async (req, res) => {
       html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
     };
 
-    transporter.sendMail(mailDetails, function (err, data) {
+    secureTransporter.sendMail(mailDetails, function (err, data) {
       if (err) {
         return res.status(500).json({ error: 'Error sending verification email' });
       } else {
