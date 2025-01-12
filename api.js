@@ -1689,7 +1689,7 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const { name, phone } = req.body;
+  const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
     const db = client.db("ganttify");
@@ -1703,11 +1703,14 @@ router.put("/user/:userId", async (req, res) => {
 
     var enterName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var enterPhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterDiscordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterPronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var enterTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
 
     // Update the user with the new data
     await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name: enterName, phone:enterPhone } }
+      { $set: { name: enterName, phone: enterPhone, discordAccount: enterDiscordAccount, pronouns: enterPronouns, timezone: enterTimezone } }
     );
 
     // Fetch the updated user
