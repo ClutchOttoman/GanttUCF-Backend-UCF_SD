@@ -1054,15 +1054,40 @@ router.post("/taskcategories", async (req, res) => {
 
 //-----------------> Delete Task <-----------------//
 router.delete("/tasks/:id", async (req, res) => {
-  const { id } = req.params;
+  const { id: taskId } = req.params;
+  const { projectId: projectId } = req.body;
   let error = "";
 
+  console.log(taskId, projectId)
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
+    const projectsCollection = db.collection("projects");
 
-    const result = await taskCollection.deleteOne({ _id: new ObjectId(id) });
-    res.status(200).json(result);
+    //Deleting task in tasks collection
+    const taskDeleteResult = await taskCollection.deleteOne({ _id: new ObjectId(taskId) });
+    if (taskDeleteResult.deletedCount === 0) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    const projectUpdateResult = await projectsCollection.updateOne(
+      { 
+        _id: new ObjectId(projectId),
+        tasks: new ObjectId(taskId) // Ensure the taskId exists in the tasks array
+      },
+      { 
+        $pull: { 
+          tasks: new ObjectId(taskId) // Pull the task by taskId (ObjectId)
+        } 
+      }
+    );
+
+    if (projectUpdateResult.modifiedCount === 0) {
+      return res.status(404).json({ message: "Task not found in project" });
+    }
+    
+    res.status(200).json({ message: "Task deleted successfully from both task and project collections" });
+    
   } catch (error) {
     console.error("Error deleting task:", error);
     error = "Internal server error";
