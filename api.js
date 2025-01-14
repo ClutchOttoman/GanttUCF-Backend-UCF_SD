@@ -1778,8 +1778,9 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
+    const moveUser = db.collection("deleted_user_accounts");
     const projectCollection = db.collection("projects");
-    const moveProjects = db.collection("recently_deleted_projects");
+    const moveProjects = db.collection("deleted_account_projects");
 
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
     if (!user) {
@@ -1793,6 +1794,10 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
       // Proceed with deletion
       const email = user.email;
+      const userAccountToDelete = await userCollection.findOne({ _id: new ObjectId(userId) });
+      delete userAccountToDelete._id; //NEED TO REMOVE WHEN IN PRODUCTION, ENDPOINT CURRENTLY RUNNING TWICE
+      const insertUser = await moveUser.insertOne(userAccountToDelete);
+      
       const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
 
       if (deleteResult.deletedCount === 0) {
@@ -1803,22 +1808,22 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const projectsToDelete = await projectCollection.find({ founderId: new ObjectId(userId) }).toArray();
 
       if (projectsToDelete.length === 0) {
-        return res.status(400).json({ error: "No projects found for the specified user ID" });
-      }
+        res.status(400).json({ error: "No projects found for the specified user ID" });
+      }else{
+        // Move those projects to the recently deleted projects collection.
+        const insertResult = await moveProjects.insertMany(projectsToDelete);
 
-      // Move those projects to the recently deleted projects collection.
-      const insertResult = await moveProjects.insertMany(projectsToDelete);
+        if (insertResult.insertedCount !== projectsToDelete.length) {
+          return res.status(500).json({ error: "Failed to move all projects to recently_deleted_projects" });
+        }
 
-      if (insertResult.insertedCount !== projectsToDelete.length) {
-        return res.status(500).json({ error: "Failed to move all projects to recently_deleted_projects" });
-      }
+        // Delete the projects from the projects collection
+        const deleteProjects = await projectCollection.deleteMany({ founderId: new ObjectId(userId) });
 
-      // Delete the projects from the projects collection
-      const deleteProjects = await projectCollection.deleteMany({ founderId: new ObjectId(userId) });
-
-      if (deleteProjects.deletedCount === 0) {
-        return res.status(400).json({ error: "Failed to delete projects" });
-      }
+        if (deleteProjects.deletedCount === 0) {
+          return res.status(400).json({ error: "Failed to delete projects" });
+        }
+      }      
 
       // Configure Nodemailer transport.
       const secureTransporter = await createSecureOAuth2Transporter();
