@@ -8,16 +8,10 @@ jobs:
     name: deploy to DO droplet
     runs-on: ubunbtu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Deploy
+      - name: Deploy NodeJS backend
         run: |
           sshpass -p ${{ secrets.SSH_PASSWORD }} ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.DROPLET_IP }} << EOF
-            cd /path/to/your/application
+            cd /Ganttify/Ganttify-Backend-UCF_SD
             git pull origin master
             npm install
             pm2 restart server
