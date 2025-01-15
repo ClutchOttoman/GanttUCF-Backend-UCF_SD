@@ -1,0 +1,24 @@
+name: CI/CD
+on:
+  pull_request:
+    branches:
+      - master
+jobs:
+  my_job:
+    name: deploy to DO droplet
+    runs-on: ubunbtu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy
+        run: |
+          sshpass -p ${{ secrets.SSH_PASSWORD }} ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.DROPLET_IP }} << EOF
+            cd /path/to/your/application
+            git pull origin master
+            npm install
+            pm2 restart server
+          EOF
