@@ -1777,10 +1777,15 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
   try {
     const db = client.db("ganttify");
+    //Account
     const userCollection = db.collection("userAccounts");
     const moveUser = db.collection("deleted_user_accounts");
+    //Projects
     const projectCollection = db.collection("projects");
     const moveProjects = db.collection("deleted_account_projects");
+    //Tasks
+    const taskCollection = db.collection("tasks");
+    const moveTasks = db.collection("deleted_account_tasks");
 
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
     if (!user) {
@@ -1794,10 +1799,15 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
       // Proceed with deletion
       const email = user.email;
+
+      // Find user account
       const userAccountToDelete = await userCollection.findOne({ _id: new ObjectId(userId) });
+
+      // Move to Deleted folder
       delete userAccountToDelete._id; //NEED TO REMOVE WHEN IN PRODUCTION, ENDPOINT CURRENTLY RUNNING TWICE
       const insertUser = await moveUser.insertOne(userAccountToDelete);
       
+      // Delete from users collection
       const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
 
       if (deleteResult.deletedCount === 0) {
@@ -1807,21 +1817,46 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       // Find the projects associated with the user ID.
       const projectsToDelete = await projectCollection.find({ founderId: new ObjectId(userId) }).toArray();
 
+      // If the user have created any projects, find the tasks in those projects to delete
+      let tasksToDelete = []; 
+      let taskIdsToDelete = [];
+      for (const project of projectsToDelete) {
+          if (project.tasks && Array.isArray(project.tasks)) {
+              const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
+              taskIdsToDelete = taskIdsToDelete.concat(taskIds);
+              const foundTasks = await taskCollection.find({ _id: { $in: taskIds } }).toArray();
+              tasksToDelete = tasksToDelete.concat(foundTasks);
+          }
+      }
+
+      // If any projects, proceed to moving
       if (projectsToDelete.length === 0) {
         res.status(400).json({ error: "No projects found for the specified user ID" });
       }else{
-        // Move those projects to the recently deleted projects collection.
-        const insertResult = await moveProjects.insertMany(projectsToDelete);
+        // Move those projects and tasks to the recently deleted projects and tasks collection.
+        const movingProjects = await moveProjects.insertMany(projectsToDelete);
+        const movingTasks = await moveTasks.insertMany(tasksToDelete);
 
-        if (insertResult.insertedCount !== projectsToDelete.length) {
+        if (movingProjects.insertedCount !== projectsToDelete.length) {
           return res.status(500).json({ error: "Failed to move all projects to recently_deleted_projects" });
+        }
+
+        if (movingTasks.insertedCount !== tasksToDelete.length) {
+          return res.status(500).json({ error: "Failed to move all tasks to recently_deleted_tasks" });
         }
 
         // Delete the projects from the projects collection
         const deleteProjects = await projectCollection.deleteMany({ founderId: new ObjectId(userId) });
 
+        // Delete the tasks from the tasks collection
+        const deleteTasks = await taskCollection.deleteMany({ _id: { $in: taskIdsToDelete } });
+
         if (deleteProjects.deletedCount === 0) {
           return res.status(400).json({ error: "Failed to delete projects" });
+        }
+
+        if (deleteTasks.deletedCount === 0) {
+          return res.status(400).json({ error: "Failed to delete tasks" });
         }
       }      
 
