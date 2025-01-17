@@ -551,7 +551,7 @@ router.post("/edit-user-profile-details", async (req, res) => {
         },
       } 
     );
-    
+
     return res.status(200).send("User profile has been successfully updated.");
     
   } catch (error) {
@@ -846,6 +846,26 @@ router.post('/createtask', async (req, res) => {
     console.log('No task category provided.');
   }
 
+  var prequisitesDone = false;
+  // Determine if the list of prequisities for this task have already been completed.
+  var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+  
+  // Check if the user assigned prequisite tasks for this new task.
+  if (prerequisiteTasks.length > 0){
+
+    // For each prequisite task, add this task as a dependency.
+    await taskCollection.updateMany(
+      {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
+      {$set: {dependentTasks: taskId}}
+    );
+
+    // All of this task's prequisites are done. 
+    if (prerequisiteTasks.length == allCompletedPrequisites.length){
+      prequisitesDone = true;
+    }
+
+  }
+  
   // Create the new task object with taskCategoryId if available
   const newTask = {
     description,
@@ -863,12 +883,12 @@ router.post('/createtask', async (req, res) => {
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
     dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
-    allowEmailNotify: false
+    allPrequisitesDone: prequisitesDone // Indicates if all of this task's prequisites are done.
   };
 
     // Insert the new task into the tasks collection
     const taskResult = await taskCollection.insertOne(newTask);
-    const taskId = taskResult._id;
+    const taskId = taskResult.insertedId;
     console.log(`Task inserted with ID: ${taskId}`);
 
     // Update the project with the new task ID
@@ -883,20 +903,6 @@ router.post('/createtask', async (req, res) => {
         { _id: { $in: assignedTasksUsers.map((id) => new ObjectId(id)) } },
         { $push: { toDoList: taskId } }
       );
-    }
-
-    // Check if the user assigned prequisite tasks for this new task.
-    if (prerequisiteTasks.length > 0){
-
-      // Assign the prequisites to this task.
-      await taskCollection.updateOne({_id: taskId}, {$set: {prerequisiteTasks: prerequisiteTasks}});
-
-      // For each prequisite task, add this task as a dependency.
-      await taskCollection.updateMany(
-        {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
-        {$set: {dependentTasks: taskId}}
-      );
-
     }
 
     // Add task category.
@@ -944,7 +950,6 @@ router.put("/tasks/:id", async (req, res) => {
 
   try {
     const db = client.db("ganttify");
-    const userCollection = db.collection('userAccounts');
     const taskCollection = db.collection("tasks");
     const taskCategoriesCollection = db.collection("task_categories");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
@@ -984,93 +989,53 @@ router.put("/tasks/:id", async (req, res) => {
           await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: task._id}});
 
         }
-        
-      }
 
-      // If this task progress was updated to be completed.
-      if ((updateFields.progress && updateFields.progress !== task.progress) && updateFields.progress === "Completed"){
-
+        // Reexamine if all of this task's prequisites are completed or not.
         var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-        console.log("Number of completed prequisites for this task: " + allCompletedPrequisites + ". Out of a total of " + allPrequisites.length + " prequisite tasks."); // debugging purposes.
+        console.log("Number of updated completed prequisites for this task: " + allCompletedPrequisites + ". Out of a total of " + task.prerequisiteTasks.length + " prequisite tasks."); // debugging purposes.
 
-        // If email notifications are turned on for this task and all of prequisites for this task are done, 
-        // notify all assigned users of this task that all prequisites for this task are done.
-        if (updateFields.allowEmailNotify && allCompletedPrequisites.length == task.prerequisiteTasks.length){
-          
-          console.log("Sending a notification email since all prequisite tasks are done for this task.")
-          
-          // Send out a notification to each assigned user to this task.
-          for (var assignedUser of task.assignedTasksUsers){
-
-            // Find the email of the user.
-            var sendUser = await userCollection.findOne({_id: assignedUser}, {name: 1, email: 1});
-
-            const secureTransporter = await createSecureTransporter();
-            if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
-
-            // Update the user on the project and task that was completed.
-            let mailDetails = {
-              from: process.env.USER_EMAIL,
-              to: sendUser.email,
-              subject: `Ganttify Project Update: ${task.taskTitle} is Ready to Begin`,
-              text: `Hello ${sendUser.name},\n Your assigned task ${task.taskTitle} has all of its prequisite tasks done, and is ready to worked on.`,
-              html: `<p>Hello ${sendUser.name},</p> <p>Your assigned task ${task.taskTitle} has all of its prequisite tasks done, and is ready to worked on.\n</p>`
-            };
-
-            secureTransporter.sendMail(mailDetails, function (err, data) {
-              if (err) {
-                return res.status(500).json({ error: 'Error sending email' });
-              } else {
-                return res.status(200).json({ message: 'Task alert reset email sent' });
-              }
-            });
-          }
+        if (allCompletedPrequisites.length == task.prerequisiteTasks.length){
+          // This task's prequisites are all completed.
+          updateFields.allPrequisitesDone = true;
+        } else {
+          // Not all of this task's requisites are done.
+          updateFields.allPrequisitesDone = false;
         }
 
-        // Check the dependencies of this task. If this task happens 
-        // to be the one that fulfills the dependency's prequisities...
-        var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
-        
+      }
+
+      // If this task's completion status has changed, evaluate the task's dependencies.
+      if (updateFields.progress && updateFields.progress !== task.progress){
+
         // Ensure that the progress status of this task is updated before proceeding.
+        // If this task happens to be the one that fulfills the dependency's prequisities...
         await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: task.allowEmailNotify}});
 
-        // Check each dependent task's prequisities.
-        for (const dependTask of allDependencies) {
+        // Find all dependencies of this task. 
+        var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
 
-          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTask.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        for (const prequisiteTask of allDependencies) {
           
-          if (dependTask.prerequisiteTasks.length == completedDependPrequisites.length){
-            console.log("Dependency " + dependTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+          // Check each dependent task's prequisities.
+          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: prequisiteTask.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+          
+          // If this task caused those tasks status to change...
+          if (prequisiteTask.prerequisiteTasks.length == completedDependPrequisites.length){
             
-            // If all prequisite tasks are done for the dependencies (including this task) 
-            // send out a notification to each assigned user to this task.
-            for (var assignedUser of dependTask.assignedTasksUsers){
-              console.log("Notifying user that dependency " + dependTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+            console.log("Dependency " + prequisiteTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+            
+            // Update the status of this dependency.
+            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {allPrequisitesDone: true}});
 
-              // Find the email of the user.
-              var sendUser = await userCollection.findOne({_id: assignedUser}, {email: 1});
+          } else {
 
-              const secureTransporter = await createSecureTransporter();
-              if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+            console.log("Dependency " + prequisiteTask.taskTitle +  " of task " + task.taskTitle + " prequisities are no longer all completed.");
+            
+            // Update the status of this dependency.
+            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {allPrequisitesDone: false}});
 
-              // Update the user on the project and task that was completed.
-              let mailDetails = {
-                from: process.env.USER_EMAIL,
-                to: sendUser.email,
-                subject: `Ganttify Project Update: ${dependTask.taskTitle} is Ready to Begin`,
-                text: `Hello ${assignedUser.name},\n Your assigned task ${dependTask.taskTitle} has all of its prequisite tasks done, and is ready to worked on.`,
-                html: `<p>Hello ${assignedUser.name},</p> <p>Your assigned task ${dependTask.taskTitle} has all of its prequisite tasks done, and is ready to worked on.\n</p>`
-              };
-
-              secureTransporter.sendMail(mailDetails, function (err, data) {
-                if (err) {
-                  return res.status(500).json({ error: 'Error sending email' });
-                } else {
-                  return res.status(200).json({ message: 'Task alert reset email sent' });
-                }
-              });
-            }
           }
+
         }        
       }
     }
