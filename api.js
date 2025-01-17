@@ -909,7 +909,6 @@ router.post('/createtask', async (req, res) => {
 
         // All of this task's prequisites are done. 
         if (prerequisiteTasks.length == allCompletedPrequisites.length){
-          prequisitesDone = true;
           await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
         }
 
