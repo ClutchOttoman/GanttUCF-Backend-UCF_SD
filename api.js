@@ -316,12 +316,16 @@ router.post("/login", async (req, res) => {
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     const verifiedUser = await userCollection.findOne({ email: enterEmail });
 
+    console.log("Verified user: \n");
+    console.log(verifiedUser);
+    
     // If user account is not found in the verified database.
     if (!verifiedUser) {
       error = "Invalid email or password";
       return res.status(401).json({ error });
     }
 
+    console.log("Email found");
  
   const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
 
