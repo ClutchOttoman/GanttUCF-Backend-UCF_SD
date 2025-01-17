@@ -850,25 +850,7 @@ router.post('/createtask', async (req, res) => {
     console.log('No task category provided.');
   }
 
-  var prequisitesDone = false;
-  // Determine if the list of prequisities for this task have already been completed.
-  var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
   
-  // Check if the user assigned prequisite tasks for this new task.
-  if (prerequisiteTasks.length > 0){
-
-    // For each prequisite task, add this task as a dependency.
-    await taskCollection.updateMany(
-      {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
-      {$set: {dependentTasks: taskId}}
-    );
-
-    // All of this task's prequisites are done. 
-    if (prerequisiteTasks.length == allCompletedPrequisites.length){
-      prequisitesDone = true;
-    }
-
-  }
   
   // Create the new task object with taskCategoryId if available
   const newTask = {
@@ -914,6 +896,26 @@ router.post('/createtask', async (req, res) => {
       { _id: categoryId },
       { $push: { tasksUnder: taskId } }
     );
+
+    var prequisitesDone = false;
+    // Determine if the list of prequisities for this task have already been completed.
+    var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+  
+    // Check if the user assigned prequisite tasks for this new task.
+    if (prerequisiteTasks.length > 0){
+
+    // For each prequisite task, add this task as a dependency.
+    await taskCollection.updateMany(
+      {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
+      {$push: {dependentTasks: taskId}}
+    );
+
+    // All of this task's prequisites are done. 
+    if (prerequisiteTasks.length == allCompletedPrequisites.length){
+      prequisitesDone = true;
+    }
+
+  }
 
     // Respond with the newly created task details
     res.status(201).json({ ...newTask, _id: taskId });
