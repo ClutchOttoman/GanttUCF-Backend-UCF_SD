@@ -1,5 +1,5 @@
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
-
+const GANTTIFY_IP = "206.81.1.248";
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -46,41 +46,80 @@ let client;
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
 
 // Set up OAuth2 client and returns a secure transporter.
-// Use this transporter for any email sent.
-const createSecureOAuth2Transporter = async () => {
+// This is bugged for some reason, don't do this.
+// const createSecureOAuth2Transporter = async () => {
+
+//   try {
+    
+//     const oAuth2Client = new OAuth2(process.env.CLIENT_ID, process.env.CLIENT_SECRET, "https://developers.google.com/oauthplayground");
+    
+//     oAuth2Client.setCredentials({refresh_token: process.env.REFRESH_TOKEN});
+  
+//     // Get access token.
+//     const accessToken = await new Promise((resolve, reject) => {
+//       oAuth2Client.getAccessToken((err, token) => {
+//         if (err) {reject();}
+//         console.log("Access token was found.");
+//         console.log("1");
+//         resolve(token);
+//         console.log("2");
+//       });
+//       console.log("3");
+//     });
+
+//     console.log("Access token: = " + accessToken);
+
+//     const secureTransporter = nodeMailer.createTransport({
+//       service: 'gmail',
+//       host: "smtp.gmail.com",
+//       secure:true,
+//       port: 465,
+//       auth: {
+//         type: "OAuth2",
+//         user: process.env.USER_EMAIL,
+//         pass: process.env.EMAIL_PASSWORD,
+//         accessToken,
+//         clientId: process.env.CLIENT_ID,
+//         clientSecret: process.env.CLIENT_SECRET,
+//         refreshToken: process.env.REFRESH_TOKEN,
+//       }
+//     });
+    
+
+//     console.log("4");
+//     console.log("clientId = " + process.env.CLIENT_ID); 
+//     console.log("clientSecret = " + process.env.CLIENT_SECRET); 
+//     console.log("refreshToken = " + process.env.REFRESH_TOKEN); 
+//     return secureTransporter;
+    
+//   } catch (error) {
+//     console.log(error);
+//     return null;
+//   }
+// };
+
+const createSecureTransporter = async () => {
 
   try {
 
-    const oAuth2Client = new OAuth2(process.env.CLIENT_ID, process.env.CLIENT_SECRET, "https://developers.google.com/oauthplayground");
-    oAuth2Client.setCredentials({refresh_token: process.env.REFRESH_TOKEN});
-  
-    // Get access token.
-    const accessToken = await new Promise((resolve, reject) => {
-      oAuth2Client.getAccessToken((err, token) => {
-        if (err) {reject();}
-        resolve(token);
-      });
-    });
-  
     const secureTransporter = nodeMailer.createTransport({
       service: 'gmail',
+      host: "smtp.gmail.com",
+      secure: true,
+      port: 465,
       auth: {
-        type: "OAuth2",
+        type: "login",
         user: process.env.USER_EMAIL,
-        accessToken,
-        clientId: process.env.CLIENT_ID,
-        clientSecret: process.env.CLIENT_SECRET,
-        refreshToken: process.env.REFRESH_TOKEN,
+        pass: process.env.EMAIL_PASSWORD,
       }
     });
-  
+
     return secureTransporter;
     
   } catch (error) {
-    console.error(error);
+    console.log(error);
     return null;
   }
-
 };
 
 //////////////
@@ -163,8 +202,8 @@ router.post("/register", async (req, res) => {
     //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
     let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
-    // Use secure OAuth2 transporter.
-    const secureTransporter = await createSecureOAuth2Transporter();
+    // Use secure transporter.
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
@@ -349,7 +388,7 @@ router.post('/forgot-password', async (req, res) =>
       let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
       //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
-      const secureTransporter = await createSecureOAuth2Transporter();
+      const secureTransporter = await createSecureTransporter();
       if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
       let mailDetails = {
@@ -429,7 +468,6 @@ router.post('/reset-password', async (req, res) =>
 
         // Compare the hashes to ensure that the new password is not the same as the old password.
         const isPasswordChanged = await bcrypt.compare(password, user.password);
-
         console.log("isPassword = " + isPasswordChanged);
 
         if (isPasswordChanged == true){
@@ -513,12 +551,7 @@ router.post("/edit-user-profile-details", async (req, res) => {
         },
       } 
     );
-
-    // Debugging purposes only.
-    // const testChange = await userCollection.findOne({_id: new ObjectId(id)});
-    // console.log("New user details:\n");
-    // console.log(testChange); // debug.
-
+    
     return res.status(200).send("User profile has been successfully updated.");
     
   } catch (error) {
@@ -580,7 +613,7 @@ router.post("/edit-email", async (req, res) => {
     //let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
     let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
-    const secureTransporter = await createSecureOAuth2Transporter();
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
@@ -707,48 +740,47 @@ router.post("/read/users", async (req, res) => {
 //-----------------> Create Task Endpoint <-----------------//
 
 // Expression to validate hex color
-const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
+// const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
 
 // List of valid patterns
 // Replaced the valid file as pngs instead of svgs.
-const allowedPatterns = {
-  hollow_shape_family: [
-    // "Hollow_Mac_Noodle_Density_1.svg", // Removed
-    "Hollow_Single_Circle_Density_1.png",
-    "Hollow_Single_Dot_Density_1.png",
-    "Hollow_Single_Rhombus_Density_1.png",
-    "Hollow_Single_Square_Density_1.png",
-    "Hollow_Single_Star_Density_1.png",
-    "Hollow_Single_Triangle_Density_1.png",
-  ],
-  line_family: [
-    "Diagonal_Left_Single_Line_Density_1.png",
-    "Diagonal_Right_Single_Line_Density_1.png",
-    "Diagonal_Woven_Line_Density_1.png",
-    "Single_Horizontal_Line_Density_1.png",
-    "Single_Vertical_Line_Density_1.png",
-  ],
-  solid_shape_family: [
-    // "Solid_Mac_Noodle_Density_1.svg", // Removed.
-    "Solid_Single_Circle_Density_1.png",
-    "Solid_Single_Dot_Density_1.png",
-    "Solid_Single_Rhombus_Density_1.png",
-    "Solid_Single_Square_Density_1.png",
-    "Solid_Single_Star_Density_1.png",
-    "Solid_Single_Triangle_Density_1.png",
-  ], 
-  halftone_family: [
-    "Halftone_Density_1.png",
-    "Halftone_Density_2.png",
-    "Halftone_Density_3.png",
-  ]
-};
+// const allowedPatterns = {
+//   hollow_shape_family: [
+//     // "Hollow_Mac_Noodle_Density_1.svg", // Removed
+//     "Hollow_Single_Circle_Density_1.png",
+//     "Hollow_Single_Dot_Density_1.png",
+//     "Hollow_Single_Rhombus_Density_1.png",
+//     "Hollow_Single_Square_Density_1.png",
+//     "Hollow_Single_Star_Density_1.png",
+//     "Hollow_Single_Triangle_Density_1.png",
+//   ],
+//   line_family: [
+//     "Diagonal_Left_Single_Line_Density_1.png",
+//     "Diagonal_Right_Single_Line_Density_1.png",
+//     "Diagonal_Woven_Line_Density_1.png",
+//     "Single_Horizontal_Line_Density_1.png",
+//     "Single_Vertical_Line_Density_1.png",
+//   ],
+//   solid_shape_family: [
+//     "Solid_Single_Circle_Density_1.png",
+//     "Solid_Single_Dot_Density_1.png",
+//     "Solid_Single_Rhombus_Density_1.png",
+//     "Solid_Single_Square_Density_1.png",
+//     "Solid_Single_Star_Density_1.png",
+//     "Solid_Single_Triangle_Density_1.png",
+//   ], 
+//   halftone_family: [
+//     "Halftone_Density_1.png",
+//     "Halftone_Density_2.png",
+//     "Halftone_Density_3.png",
+//   ]
+// };
 
 // Expression to validate pattern selection
-const isValidPattern = (pattern) => {
-  const [folder, file] = pattern.split('/');
-  return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
-};
+// const isValidPattern = (pattern) => {
+//   const [folder, file] = pattern.split('/');
+//   return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
+// };
 
 //------> Create Task & Added Task Category <-------//
 router.post('/createtask', async (req, res) => {
@@ -764,7 +796,9 @@ router.post('/createtask', async (req, res) => {
     color = '#DC6B2C',
     pattern = '',
     taskCategory = '', // Task category is optional
-    dependentTasks = [] // Stores all other task ids who are dependent on this task being done.
+    prerequisiteTasks = [], // Stores all other task ids that this task depends on being done.
+    dependentTasks = [],// Stores all other task ids who are dependent on this task being done.
+    allowEmailNotify
   } = req.body;
 
   // Validate required fields
@@ -786,52 +820,55 @@ router.post('/createtask', async (req, res) => {
 
     // Check if taskCategory is provided and not empty
     if (taskCategory && taskCategory.trim()) {
-      console.log(`Checking for existing category: ${taskCategory}`);
+    console.log(`Checking for existing category: ${taskCategory}`);
 
-      // Try to find the existing category
-      let category = await taskCategoriesCollection.findOne({ categoryTitle: taskCategory });
+    // Try to find the existing category
+    let category = await taskCategoriesCollection.findOne({ categoryTitle: taskCategory });
 
-      if (!category) {
-        console.log('Category not found. Inserting new category.');
+    if (!category) {
+      console.log('Category not found. Inserting new category.');
 
-        // Insert the new category
-        const newCategory = {
-          categoryTitle: taskCategory,
-          tasksUnder: [] // Initialize with an empty array for tasks
-        };
+      // Insert the new category
+      const newCategory = {
+        categoryTitle: taskCategory,
+        tasksUnder: [] // Initialize with an empty array for tasks
+      };
 
-        const insertedCategory = await taskCategoriesCollection.insertOne(newCategory);
-        categoryId = insertedCategory.insertedId;
-        console.log(`New category inserted with ID: ${categoryId}`);
-      } else {
-        // If the category exists, get its ID
-        categoryId = category._id;
-        console.log(`Using existing category with ID: ${categoryId}`);
-      }
+      const insertedCategory = await taskCategoriesCollection.insertOne(newCategory);
+      categoryId = insertedCategory.insertedId;
+      console.log(`New category inserted with ID: ${categoryId}`);
     } else {
-      console.log('No task category provided.');
+      // If the category exists, get its ID
+      categoryId = category._id;
+      console.log(`Using existing category with ID: ${categoryId}`);
     }
+  } else {
+    console.log('No task category provided.');
+  }
 
-    // Create the new task object with taskCategoryId if available
-    const newTask = {
-      description,
-      dueDateTime: new Date(dueDateTime),
-      taskCreated: new Date(),
-      progress,
-      assignedTasksUsers: assignedTasksUsers.map((id) => new ObjectId(id)),
-      taskTitle,
-      tiedProjectId: new ObjectId(tiedProjectId),
-      taskCreatorId: new ObjectId(taskCreatorId),
-      startDateTime: new Date(startDateTime),
-      color,
-      pattern,
-      taskCategory,
-      taskCategoryId: categoryId // Include the category ID if available
-    };
+  // Create the new task object with taskCategoryId if available
+  const newTask = {
+    description,
+    dueDateTime: new Date(dueDateTime),
+    taskCreated: new Date(),
+    progress,
+    assignedTasksUsers: assignedTasksUsers.map((id) => new ObjectId(id)),
+    taskTitle,
+    tiedProjectId: new ObjectId(tiedProjectId),
+    taskCreatorId: new ObjectId(taskCreatorId),
+    startDateTime: new Date(startDateTime),
+    color,
+    pattern,
+    taskCategory,
+    taskCategoryId: categoryId, // Include the category ID if available.
+    prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
+    dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
+    allowEmailNotify: false
+  };
 
     // Insert the new task into the tasks collection
     const taskResult = await taskCollection.insertOne(newTask);
-    const taskId = taskResult.insertedId;
+    const taskId = taskResult._id;
     console.log(`Task inserted with ID: ${taskId}`);
 
     // Update the project with the new task ID
@@ -848,10 +885,25 @@ router.post('/createtask', async (req, res) => {
       );
     }
 
-      await taskCategoriesCollection.updateOne(
-        { _id: categoryId },
-        { $push: { tasksUnder: taskId } }
+    // Check if the user assigned prequisite tasks for this new task.
+    if (prerequisiteTasks.length > 0){
+
+      // Assign the prequisites to this task.
+      await taskCollection.updateOne({_id: taskId}, {$set: {prerequisiteTasks: prerequisiteTasks}});
+
+      // For each prequisite task, add this task as a dependency.
+      await taskCollection.updateMany(
+        {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
+        {$set: {dependentTasks: taskId}}
       );
+
+    }
+
+    // Add task category.
+    await taskCategoriesCollection.updateOne(
+      { _id: categoryId },
+      { $push: { tasksUnder: taskId } }
+    );
 
     // Respond with the newly created task details
     res.status(201).json({ ...newTask, _id: taskId });
@@ -859,18 +911,16 @@ router.post('/createtask', async (req, res) => {
     console.error('Error creating task:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+
 });
 
 //-----------------> Read Task <-----------------//
 router.get("/readtasks", async (req, res) => {
   let error = "";
-
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
-
     const tasks = await taskCollection.find({}).toArray();
-
     res.status(200).json(tasks);
   } catch (error) {
     console.error("Error finding tasks:", error);
@@ -886,6 +936,7 @@ router.put("/tasks/:id", async (req, res) => {
   let error = "";
 
   console.log(id);
+  
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
     return res.status(400).json({ error });
@@ -893,8 +944,136 @@ router.put("/tasks/:id", async (req, res) => {
 
   try {
     const db = client.db("ganttify");
+    const userCollection = db.collection('userAccounts');
     const taskCollection = db.collection("tasks");
     const taskCategoriesCollection = db.collection("task_categories");
+    const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
+
+    // If the progress changed for this task changed, or if its prequisites or dependencies changed, check it.
+    if ((updateFields.progress && updateFields.progress !== task.progress) || updateFields.dependentTasks || updateFields.prerequisiteTasks){
+
+      // Assume that the prequisites for this task changed.
+      if (updateFields.prerequisiteTasks){
+
+        // Determine which prequisites, if any, were added or removed from the database.
+        var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
+        var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
+
+        if (newPrecedeTasks && newPrecedeTasks.length > 0){
+
+          // Debugging purposes. 
+          console.log("List of prequisite tasks to add: \n" + newPrecedeTasks); 
+
+          // Added these new prequisites attached to this task. 
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: newPrecedeTasks}});
+
+          // Update that this task is now a dependency to those new prequisite tasks.
+          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: task._id}});
+
+        }
+
+        if (removePrecedeTasks && removePrecedeTasks.length > 0){
+
+          // Debugging purposes. 
+          console.log("List of prequisite tasks to remove: \n" + removePrecedeTasks); 
+
+          // Remove these new prequisites attached to this task. 
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: removePrecedeTasks}});
+
+          // Update that this task is no longer a dependency to those new prequisite tasks.
+          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: task._id}});
+
+        }
+        
+      }
+
+      // If this task progress was updated to be completed.
+      if ((updateFields.progress && updateFields.progress !== task.progress) && updateFields.progress === "Completed"){
+
+        var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        console.log("Number of completed prequisites for this task: " + allCompletedPrequisites + ". Out of a total of " + allPrequisites.length + " prequisite tasks."); // debugging purposes.
+
+        // If email notifications are turned on for this task and all of prequisites for this task are done, 
+        // notify all assigned users of this task that all prequisites for this task are done.
+        if (updateFields.allowEmailNotify && allCompletedPrequisites.length == task.prerequisiteTasks.length){
+          
+          console.log("Sending a notification email since all prequisite tasks are done for this task.")
+          
+          // Send out a notification to each assigned user to this task.
+          for (var assignedUser of task.assignedTasksUsers){
+
+            // Find the email of the user.
+            var sendUser = await userCollection.findOne({_id: assignedUser}, {name: 1, email: 1});
+
+            const secureTransporter = await createSecureTransporter();
+            if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+
+            // Update the user on the project and task that was completed.
+            let mailDetails = {
+              from: process.env.USER_EMAIL,
+              to: sendUser.email,
+              subject: `Ganttify Project Update: ${task.taskTitle} is Ready to Begin`,
+              text: `Hello ${sendUser.name},\n Your assigned task ${task.taskTitle} has all of its prequisite tasks done, and is ready to worked on.`,
+              html: `<p>Hello ${sendUser.name},</p> <p>Your assigned task ${task.taskTitle} has all of its prequisite tasks done, and is ready to worked on.\n</p>`
+            };
+
+            secureTransporter.sendMail(mailDetails, function (err, data) {
+              if (err) {
+                return res.status(500).json({ error: 'Error sending email' });
+              } else {
+                return res.status(200).json({ message: 'Task alert reset email sent' });
+              }
+            });
+          }
+        }
+
+        // Check the dependencies of this task. If this task happens 
+        // to be the one that fulfills the dependency's prequisities...
+        var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+        
+        // Ensure that the progress status of this task is updated before proceeding.
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: task.allowEmailNotify}});
+
+        // Check each dependent task's prequisities.
+        for (const dependTask of allDependencies) {
+
+          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTask.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+          
+          if (dependTask.prerequisiteTasks.length == completedDependPrequisites.length){
+            console.log("Dependency " + dependTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+            
+            // If all prequisite tasks are done for the dependencies (including this task) 
+            // send out a notification to each assigned user to this task.
+            for (var assignedUser of dependTask.assignedTasksUsers){
+              console.log("Notifying user that dependency " + dependTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+
+              // Find the email of the user.
+              var sendUser = await userCollection.findOne({_id: assignedUser}, {email: 1});
+
+              const secureTransporter = await createSecureTransporter();
+              if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+
+              // Update the user on the project and task that was completed.
+              let mailDetails = {
+                from: process.env.USER_EMAIL,
+                to: sendUser.email,
+                subject: `Ganttify Project Update: ${dependTask.taskTitle} is Ready to Begin`,
+                text: `Hello ${assignedUser.name},\n Your assigned task ${dependTask.taskTitle} has all of its prequisite tasks done, and is ready to worked on.`,
+                html: `<p>Hello ${assignedUser.name},</p> <p>Your assigned task ${dependTask.taskTitle} has all of its prequisite tasks done, and is ready to worked on.\n</p>`
+              };
+
+              secureTransporter.sendMail(mailDetails, function (err, data) {
+                if (err) {
+                  return res.status(500).json({ error: 'Error sending email' });
+                } else {
+                  return res.status(200).json({ message: 'Task alert reset email sent' });
+                }
+              });
+            }
+          }
+        }        
+      }
+    }
 
     // Convert any provided ObjectId fields
     if (updateFields.assignedTasksUsers) {
@@ -902,16 +1081,23 @@ router.put("/tasks/:id", async (req, res) => {
         (id) => new ObjectId(id)
       );
     }
+
+    // Update the tied project id if necessary.
     if (updateFields.tiedProjectId) {
       updateFields.tiedProjectId = new ObjectId(updateFields.tiedProjectId);
     }
+
+    // Update task creator id if necessary.
     if (updateFields.taskCreatorId) {
       updateFields.taskCreatorId = new ObjectId(updateFields.taskCreatorId);
     }
+
+    // Update task due date time if necessary.
     if (updateFields.dueDateTime) {
       updateFields.dueDateTime = new Date(updateFields.dueDateTime);
     }
 
+    // Update task category if necessary.
     if (updateFields.taskCategory) {
       const categoryTitle = updateFields.taskCategory;
 
@@ -957,7 +1143,6 @@ router.put("/tasks/:id", async (req, res) => {
     res.status(500).json({ error });
   }
 });
-
 
 //-------------> Update Task Category ONLY <------------//
 router.put("/tasks/:id/category", async (req, res) => {
@@ -1064,7 +1249,16 @@ router.delete("/tasks/:id", async (req, res) => {
     const taskCollection = db.collection("tasks");
     const projectsCollection = db.collection("projects");
 
-    //Deleting task in tasks collection
+    // Update dependencies and prequisites for this deleted task.
+    const task = await taskCollection.findOne({_id: new ObjectId(taskId)});
+    
+    // Prequisite tasks for this deleted task no longer have this task as a dependency.
+    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(taskId)}})}
+
+    // Dependent tasks for this deleted task no longer have this task as a prequisite.
+    if (task.dependentTasks && task.dependentTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})}
+
+    // Deleting task in tasks collection
     const taskDeleteResult = await taskCollection.deleteOne({ _id: new ObjectId(taskId) });
     if (taskDeleteResult.deletedCount === 0) {
       return res.status(404).json({ message: "Task not found" });
@@ -1086,7 +1280,7 @@ router.delete("/tasks/:id", async (req, res) => {
       return res.status(404).json({ message: "Task not found in project" });
     }
     
-    res.status(200).json({ message: "Task deleted successfully from both task and project collections" });
+    res.status(200).json({ message: "Task deleted successfully from both task and project collections." });
     
   } catch (error) {
     console.error("Error deleting task:", error);
@@ -1218,7 +1412,6 @@ router.post("/createproject", async (req, res) => {
     tasks,
     isVisible = 1,
     founderId,
-    flagDeletion = 0,
     group,
   } = req.body;
   let error = "";
@@ -1241,7 +1434,6 @@ router.post("/createproject", async (req, res) => {
       tasks: [], 
       isVisible,
       founderId: new ObjectId(founderId),
-      flagDeletion,
       group: [new ObjectId()],
     };
 
@@ -1448,7 +1640,7 @@ Date.prototype.addDays = function(days) {
 
 // Delete a project
 router.delete("/projects/:id", async (req, res) => {
-  const { id, } = req.params;
+  const { id } = req.params;
   let error = "";
 
   try {
@@ -1470,7 +1662,6 @@ router.delete("/projects/:id", async (req, res) => {
       { "dateMoved": 1 },
       {
         expireAfterSeconds: 2592000,
-        partialFilterExpression: { "flagDeletion": 1 }
       }
     );
 
@@ -1478,7 +1669,6 @@ router.delete("/projects/:id", async (req, res) => {
       { "dateMoved": 1 },
       {
         expireAfterSeconds: 2592000,
-        partialFilterExpression: { "flagDeletion": 1 }
       }
     );
 
@@ -1486,7 +1676,6 @@ router.delete("/projects/:id", async (req, res) => {
       { "dateMoved": 1 },
       {
         expireAfterSeconds: 2592000,
-        partialFilterExpression: { "flagDeletion": 1 }
       }
     );
 
@@ -1499,10 +1688,8 @@ router.delete("/projects/:id", async (req, res) => {
       return res.status(404).json({ error });
     }
 
-    // Set flagDeletion to 1, add dateMoved and metadata fields
-    project.flagDeletion = 1;
+    // Add necessary field for tracking account deletion date.
     project.dateMoved = new Date();
-    project.metadata = { projectId: id }; // Example metadata, adjust as needed
 
     // Insert the project into the deleted_projects collection
     await deletedProjectsCollection.insertOne(project);
@@ -1514,12 +1701,10 @@ router.delete("/projects/:id", async (req, res) => {
       const tasks = await taskCollection.find({ _id: { $in: taskIds } }).toArray();
       console.log("Tasks found:", tasks); // Debugging line
       if (tasks.length > 0) {
-        // Set dateMoved and metadata for tasks
+        // Set dateMoved for tasks
         const tasksToMove = tasks.map(task => ({
           ...task,
-          flagDeletion: 1,
           dateMoved: new Date(),
-          metadata: { taskId: task._id }
         }));
         await deletedTasksCollection.insertMany(tasksToMove);
         console.log("Tasks moved to deleted_tasks"); // Debugging line
@@ -1539,12 +1724,10 @@ router.delete("/projects/:id", async (req, res) => {
       const team = await teamCollection.findOne({ _id: teamId });
       console.log("Team found:", team); // Debugging line
       if (team) {
-        // Set dateMoved and metadata for the team
+        // Set dateMoved for the team
         const teamToMove = {
           ...team,
-          flagDeletion: 1,
           dateMoved: new Date(),
-          metadata: { teamId: team._id }
         };
         await deletedTeamsCollection.insertOne(teamToMove);
         console.log("Team moved to deleted_teams"); // Debugging line
@@ -1560,7 +1743,7 @@ router.delete("/projects/:id", async (req, res) => {
     // Delete the project from the main collection
     await projectCollection.deleteOne({ _id: new ObjectId(id) });
 
-    const secureTransporter = await createSecureOAuth2Transporter();
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     // Send an email notification
@@ -1604,7 +1787,6 @@ router.delete("/wipeproject/:id", async (req, res) => {
       { "dateMoved": 1 },
       {
         expireAfterSeconds: 0,
-        partialFilterExpression: { "flagDeletion": 1 }
       }
     );
 
@@ -1617,12 +1799,10 @@ router.delete("/wipeproject/:id", async (req, res) => {
       return res.status(404).json({ error });
     }
 
-    // Set flagDeletion to 1, add dateMoved and metadata fields
-    project.flagDeletion = 1;
+    // Add necessary field to track account deletion date.
     project.dateMoved = new Date();
-    project.metadata = { projectId: id }; // Example metadata, adjust as needed
 
-    // Insert the project into the deleted_projects collection
+    // Insert the project into the VOID collection.
     await deleteAll.insertOne(project);
 
     // Handle associated tasks
@@ -1635,13 +1815,11 @@ router.delete("/wipeproject/:id", async (req, res) => {
         // Set dateMoved and metadata for tasks
         const tasksToMove = tasks.map(task => ({
           ...task,
-          flagDeletion: 1,
           dateMoved: new Date(),
-          metadata: { taskId: task._id }
         }));
         await deleteAll.insertMany(tasksToMove);
         console.log("Tasks moved to deleted_tasks"); // Debugging line
-        // Delete the associated tasks from the main collection
+        // Delete the associated tasks from the main collection.
         await deletedTasksCollection.deleteMany({ _id: { $in: taskIds } });
       } else {
         console.log("No tasks found for the project"); // Debugging line
@@ -1660,9 +1838,7 @@ router.delete("/wipeproject/:id", async (req, res) => {
         // Set dateMoved and metadata for the team
         const teamToMove = {
           ...team,
-          flagDeletion: 1,
           dateMoved: new Date(),
-          metadata: { teamId: team._id }
         };
         await deleteAll.insertOne(teamToMove);
         console.log("Team moved to deleted_teams"); // Debugging line
@@ -1689,7 +1865,7 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const { name, phone, discordAccount, pronouns, timezone } = req.body;
+  const { name, email, phone } = req.body;
 
   try {
     const db = client.db("ganttify");
@@ -1701,16 +1877,10 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    var enterName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var enterPhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var enterDiscordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var enterPronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var enterTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-
     // Update the user with the new data
-    await userCollection.updateOne(
+    const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name: enterName, phone: enterPhone, discordAccount: enterDiscordAccount, pronouns: enterPronouns, timezone: enterTimezone } }
+      { $set: { name, email, phone } }
     );
 
     // Fetch the updated user
@@ -1726,18 +1896,27 @@ router.put("/user/:userId", async (req, res) => {
   }
 });
 
-// Endpoint to initiate account deletion
+// Endpoint to initiate account deletion.
+// This must be password-protected simliarly to the edit email API endpoint.
 router.post("/user/request-delete/:userId", async (req, res) => {
   const userId = req.params.userId;
+  const {password} =  req.body;
 
   try {
+
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
 
-    // Validate that the user exists
+    // Validate that the user exists.
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
+    }
+
+    // Verify if user entered in correct password before proceeding with deletion.
+    const match = await bcrypt.compare(password, user.password);
+    if (!match){
+      return res.status(401).send("Incorrect password. Please try again.");
     }
 
     const email = user.email;
@@ -1745,10 +1924,9 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const token = jwt.sign({ email: email }, secret, { expiresIn: "5m" }); // Token valid for 5 minutes
 
     // Configure Nodemailer transport.
-    const secureTransporter = await createSecureOAuth2Transporter();
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    // const link = `${process.env.FRONTEND_URL}/confirm-delete/${userId}/${token}`;
     let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
     let mailDetails = {
       from: process.env.USER_EMAIL,
@@ -1762,7 +1940,7 @@ router.post("/user/request-delete/:userId", async (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Error sending email' });
       } else {
-        return res.status(200).json({ message: 'Confirmation email sent successfully.' });
+        return res.status(200).json({ message: 'Account deletion confirmation email sent successfully.' });
       }
     });
   } catch (error) {
@@ -1777,99 +1955,178 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
   try {
     const db = client.db("ganttify");
-    //Account
     const userCollection = db.collection("userAccounts");
-    const moveUser = db.collection("deleted_user_accounts");
-    //Projects
     const projectCollection = db.collection("projects");
-    const moveProjects = db.collection("deleted_account_projects");
-    //Tasks
     const taskCollection = db.collection("tasks");
-    const moveTasks = db.collection("deleted_account_tasks");
+    const teamCollection = db.collection("teams");
+    const deletedAccountCollection = db.collection("deleted_user_accounts");
+    const deletedAccountProjectsCollection = db.collection("deleted_account_projects");
+    const deletedAccountTasksCollection = db.collection("deleted_account_tasks");
+    const deletedAccountTeamsCollection = db.collection("deleted_acount_teams");
+    
+    // Ensure that TTL exists.
+    await deletedAccountCollection.createIndex(
+      { "accountDeleted": 1 },
+      {
+        expireAfterSeconds: 259200, // expires in 72 hours.
+      }
+    );
 
+    await deletedAccountProjectsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    await deletedAccountTasksCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    await deletedAccountTeamsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    // Find the user.
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const secret = process.env.JWT_SECRET + user.password;
-
     try {
+      
+      const email = user.email;
+      const secret = process.env.JWT_SECRET + user.password;
       jwt.verify(token, secret);
 
-      // Proceed with deletion
-      const email = user.email;
+      // Proceed with deletion. First handle find all projects owned by the user and associated data.
+      var allProjects = await projectCollection.find({founderId: new ObjectId(userId)}).toArray();
 
-      // Find user account
-      const userAccountToDelete = await userCollection.findOne({ _id: new ObjectId(userId) });
+      if (allProjects && allProjects.length > 0){
+        for (project of allProjects){
+          // Add an expiration date to the project.
+          project.dateMoved = new Date();
+          // Handle this project's associated tasks.
+           if (project.tasks && project.tasks.length > 0) {
+            const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
+            console.log("Task IDs to move:", taskIds); // Debugging line
+            
+            // Find all tasks associated with this project.
+            const tasks = await taskCollection.find({ _id: { $in: taskIds } }).toArray();
+            console.log("Tasks found:", tasks); // Debugging line
+            
+            if (tasks.length > 0) {
+              // Set dateMoved for tasks
+              const tasksToMove = tasks.map(task => ({
+                ...task,
+                dateMoved: new Date(),
+              }));
+              
+              await deletedAccountTasksCollection.insertMany(tasksToMove);
+              console.log("Tasks moved to deleted_tasks"); // Debugging line
+              // Delete the associated tasks from the main collection
+              await taskCollection.deleteMany({ _id: { $in: taskIds }});
+  
+            } else {
+              console.log("No tasks found for the project"); // Debugging line
+            }
+          } else {
+            console.log("No tasks assigned to the project"); // Debugging line
+          }
+  
+          // Handle associated team.
+          if (project.team) {
+            const teamId = new ObjectId(project.team);
+            console.log("Team ID to move:", teamId); // Debugging line
+  
+            // Find team associated with this project.
+            const team = await teamCollection.findOne({ _id: teamId });
+            console.log("Team found:", team); // Debugging line
+            if (team) {
+              // Set dateMoved and metadata for the team
+              const teamToMove = {
+                ...team,
+                dateMoved: new Date(),
+              };
+              
+              await deletedAccountTeamsCollection.insertOne(teamToMove);
+              console.log("Team moved to deleted_teams"); // Debugging line
+  
+              // Delete the associated team from the main collection
+              await teamCollection.deleteOne({ _id: teamId });
+  
+            } else {
+              console.log("Team not found for the project"); // Debugging line
+            }
+          } else {
+            console.log("No team assigned to the project"); // Debugging line
+          }
+        }
+        // Delete all projects associated with the user afterwards.
+        await deletedAccountProjectsCollection.insertMany(allProjects);
+        await projectCollection.deleteMany({ _id: { $in: user.projects.map(id => new ObjectId(id))}});
+      }
 
-      // Move to Deleted folder
-      delete userAccountToDelete._id; //NEED TO REMOVE WHEN IN PRODUCTION, ENDPOINT CURRENTLY RUNNING TWICE
-      const insertUser = await moveUser.insertOne(userAccountToDelete);
-      
-      // Delete from users collection
+      // After all associated data is handled, delete the user account itself while moving it to a temporary holding collection for 72 hours.
+      // Encrypt data first.
+      var encryptEmail = await encryptClient.encrypt(user.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptName = await encryptClient.encrypt(user.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPhone = await encryptClient.encrypt(user.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptUsername = await encryptClient.encrypt(user.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPassword = await encryptClient.encrypt(user.password, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptDiscord = await encryptClient.encrypt(user.discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+	    var encryptOrganization = await encryptClient.encrypt(user.organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptTimezone = await encryptClient.encrypt(user.timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPronouns = await encryptClient.encrypt(user.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
+      const encryptDeleteUser ={
+        _id: user._id,
+        email: encryptEmail,
+	      name: encryptName,
+	      phone: encryptPhone,
+        username: encryptUsername,
+	      password: encryptPassword,
+	      discordAccount: encryptDiscord,
+	      organization: encryptOrganization,
+	      pronouns: encryptPronouns,
+	      timezone: encryptTimezone,
+	      accountCreated: user.accountCreated,
+	      isEmailVerified: user.isEmailVerified,
+        accountDeleted: new Date()
+      };
+
+      // Delete the old account, then move it to the temporary collection.
       const deleteResult = await userCollection.deleteOne({ _id: new ObjectId(userId) });
+      const resultTempAccount = await deletedAccountCollection.insertOne(encryptDeleteUser);
 
       if (deleteResult.deletedCount === 0) {
-        return res.status(400).json({ error: "Failed to delete user" });
+        return res.status(400).json({ error: "Failed to delete user." });
       }
-
-      // Find the projects associated with the user ID.
-      const projectsToDelete = await projectCollection.find({ founderId: new ObjectId(userId) }).toArray();
-
-      // If the user have created any projects, find the tasks in those projects to delete
-      let tasksToDelete = []; 
-      let taskIdsToDelete = [];
-      for (const project of projectsToDelete) {
-          if (project.tasks && Array.isArray(project.tasks)) {
-              const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
-              taskIdsToDelete = taskIdsToDelete.concat(taskIds);
-              const foundTasks = await taskCollection.find({ _id: { $in: taskIds } }).toArray();
-              tasksToDelete = tasksToDelete.concat(foundTasks);
-          }
-      }
-
-      // If any projects, proceed to moving
-      if (projectsToDelete.length === 0) {
-        res.status(400).json({ error: "No projects found for the specified user ID" });
-      }else{
-        // Move those projects and tasks to the recently deleted projects and tasks collection.
-        const movingProjects = await moveProjects.insertMany(projectsToDelete);
-        const movingTasks = await moveTasks.insertMany(tasksToDelete);
-
-        if (movingProjects.insertedCount !== projectsToDelete.length) {
-          return res.status(500).json({ error: "Failed to move all projects to recently_deleted_projects" });
-        }
-
-        if (movingTasks.insertedCount !== tasksToDelete.length) {
-          return res.status(500).json({ error: "Failed to move all tasks to recently_deleted_tasks" });
-        }
-
-        // Delete the projects from the projects collection
-        const deleteProjects = await projectCollection.deleteMany({ founderId: new ObjectId(userId) });
-
-        // Delete the tasks from the tasks collection
-        const deleteTasks = await taskCollection.deleteMany({ _id: { $in: taskIdsToDelete } });
-
-        if (deleteProjects.deletedCount === 0) {
-          return res.status(400).json({ error: "Failed to delete projects" });
-        }
-
-        if (deleteTasks.deletedCount === 0) {
-          return res.status(400).json({ error: "Failed to delete tasks" });
-        }
-      }      
 
       // Configure Nodemailer transport.
-      const secureTransporter = await createSecureOAuth2Transporter();
+      const secureTransporter = await createSecureTransporter();
       if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+
+      const newSecret = process.env.JWT_SECRET + user.password;
+      const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
+
+      // Set up this restoration link.
+      let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
       let mailDetails = {
         from: process.env.USER_EMAIL,
-        to: email, 
-        subject: "Account Deletion",
-        text: 'Hello,\n\nYour account and all associated projects and tasks has been deleted from our system.\n\nWe are sorry to see you go!',
+        to: email,
+        subject: "Ganttify Account Deletion",
+        text: `Hello,\n\nYour account has been deleted from our system. We are sorry to see you go!\n\n${restoreLink}\n\nIf you did not request this, please ignore this email.`,
+        html: `<p>Hello,</p> <p>Your account has been deleted from our system. We are sorry to see you go!\n\nAfter confirming your account deletion, you can recover your account and your associated data within 72 hours by clicking the below link:\n</p> <a href="${restoreLink}" className="btn">Restore Your Account</a> <p>If you did not request this, please ignore this email.</p>`,
       };
 
       secureTransporter.sendMail(mailDetails, (err, info) => {
@@ -1879,14 +2136,205 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
           return res.status(200).json({ message: 'Account and associated data moved to deleted collections successfully' });
         }
       });
-    }catch (error) {
+
+    } catch (error) {
       console.error("Token verification failed:", error);
       return res.status(400).json({ error: "Invalid or expired token" });
-    }    
+    }
+
   } catch (error) {
     console.error("Error confirming account deletion:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+
+});
+
+// Endpoint to restore the account via clicking on the email link.
+router.post("/user/restore-account/:userId/:token", async (req, res) => {
+  const { userId, token } = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const projectCollection = db.collection("projects");
+    const taskCollection = db.collection("tasks");
+    const teamCollection = db.collection("teams");
+    const deletedAccountCollection = db.collection("deleted_user_accounts");
+    const deletedAccountProjectsCollection = db.collection("deleted_account_projects");
+    const deletedAccountTasksCollection = db.collection("deleted_account_tasks");
+    const deletedAccountTeamsCollection = db.collection("deleted_acount_teams");
+    
+    // Ensure that TTL exists.
+    await deletedAccountCollection.createIndex(
+      { "accountDeleted": 1 },
+      {
+        expireAfterSeconds: 259200, // expires in 72 hours.
+      }
+    );
+
+    await deletedAccountProjectsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000, // expires in 72 hours.
+      }
+    );
+
+    await deletedAccountTasksCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    await deletedAccountTeamsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    // Find the user. Ensure that the user does not attempt to use this endpoint when the user account already exists.
+    const exist = await userCollection.findOne({_id: new ObjectId(userId) });
+    const user = await deletedAccountCollection.findOne({ _id: new ObjectId(userId) });
+
+    if (exist){return res.status(403).json({error: "Your account already exists."});} // indicates that the account is already present and not deleted.
+    if (!user) {return res.status(404).json({ error: "Your account does not exist, or your account has been permanently deleted after 72 hours." });} // indicates that data was already wiped.
+
+    console.log("Project ids to restore.");
+    console.log(user.projects);
+    const email = user.email;
+    const secret = process.env.JWT_SECRET + user.password;
+
+    try {
+
+      jwt.verify(token, secret);
+
+      // Proceed with restoration. First handle find all projects and associated data.
+      var allProjects = await deletedAccountProjectsCollection.find({founderId: new ObjectId(userId)}).toArray();
+
+      if (allProjects && allProjects.length > 0){
+        for (project of allProjects){
+          // Remove unnecessary field for dateMoved.
+          delete project.dateMoved;
+          // Handle associated tasks
+          if (project.tasks && project.tasks.length > 0) {
+            const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
+            console.log("Task IDs to move:", taskIds); // Debugging line
+            
+            const tasks = await deletedAccountTasksCollection.find({ _id: { $in: taskIds } }).toArray();
+            console.log("Tasks found:", tasks); // Debugging line
+            
+            if (tasks.length > 0) {
+              const tasksToMove = tasks.map(task => ({
+                ...task,
+              }));
+              await taskCollection.insertMany(tasksToMove);
+              console.log("Tasks moved to deleted_tasks"); // Debugging line
+              // Delete the associated tasks from the main collection
+              await deletedAccountTasksCollection.deleteMany({ _id: { $in: taskIds } });
+            } else {
+              console.log("No tasks found for the project"); // Debugging line
+            }
+  
+          } else {
+            console.log("No tasks assigned to the project"); // Debugging line
+          }
+  
+          // Handle associated team
+          if (project.team) {
+            
+            const teamId = new ObjectId(project.team);
+            console.log("Team ID to move:", teamId); // Debugging line
+            
+            const team = await deletedAccountTeamsCollection.findOne({ _id: teamId });
+            console.log("Team found:", team); // Debugging line
+            
+            if (team) {
+              const teamToMove = {
+                ...team,
+              };
+              await teamCollection.insertOne(teamToMove);
+              console.log("Team moved to deleted_teams"); // Debugging line
+              // Delete the associated team from the main collection
+              await deletedAccountTeamsCollection.deleteOne({ _id: teamId });
+            } else {
+              console.log("Team not found for the project"); // Debugging line
+            }
+  
+          } else {
+            console.log("No team assigned to the project"); // Debugging line
+          }
+        }
+        // Afterwards, restore the projects.
+        await projectCollection.insertMany(allProjects);
+        await deletedAccountProjectsCollection.deleteMany({ _id: { $in: user.projects.map(id => new ObjectId(id))}});
+      }
+
+      // After all associated data is handled, restore the user account itself.
+      // Encrypt data first.
+      var encryptEmail = await encryptClient.encrypt(user.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptName = await encryptClient.encrypt(user.name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPhone = await encryptClient.encrypt(user.phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptUsername = await encryptClient.encrypt(user.username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPassword = await encryptClient.encrypt(user.password, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptDiscord = await encryptClient.encrypt(user.discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+	    var encryptOrganization = await encryptClient.encrypt(user.organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptTimezone = await encryptClient.encrypt(user.timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      var encryptPronouns = await encryptClient.encrypt(user.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
+      const encryptRestoreUser ={
+        _id: user._id,
+        email: encryptEmail,
+	      name: encryptName,
+	      phone: encryptPhone,
+        username: encryptUsername,
+	      password: encryptPassword,
+	      discordAccount: encryptDiscord,
+	      organization: encryptOrganization,
+	      pronouns: encryptPronouns,
+	      timezone: encryptTimezone,
+	      accountCreated: user.accountCreated,
+	      isEmailVerified: user.isEmailVerified,
+      };
+
+      // Remove from the temporary collection and return to the regular user collection.
+      const deleteResult = await deletedAccountCollection.deleteOne({ _id: new ObjectId(userId) });
+      await userCollection.insertOne(encryptRestoreUser);
+
+      if (deleteResult.deletedCount === 0) {
+        return res.status(400).json({ error: "Failed to remove user's old data from temporary collection." });
+      }
+
+      // Configure Nodemailer transport.
+      const secureTransporter = await createSecureTransporter();
+      if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+
+      // Send an email notification
+      let mailDetails = {
+        from: process.env.USER_EMAIL,
+        to: email, 
+        subject: "Ganttify Account Restored...Welcome Back!",
+        text: 'Hello,\n\nYour account has been restored from our system.\n\nWe are glad to see you back!\n\nYou are now able to login again and see your projects.',
+      };
+
+      secureTransporter.sendMail(mailDetails, (err, info) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error sending email' });
+        } else {
+          return res.status(200).json({ message: 'Account and associated data restored from deleted collections successfully.' });
+        }
+      });
+
+    }catch (error) {
+      console.error("Token verification failed:", error);
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+
+  } catch (error) {
+    console.error("Error confirming account deletion:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+
 });
 
 // -----------------> Delete a specific user <-----------------//
@@ -2249,10 +2697,8 @@ router.post("/restore-project/:id", async (req, res) => {
       return res.status(404).json({ error });
     }
 
-    // Set flagDeletion to 1, add dateMoved and metadata fields
-    project.flagDeletion = 0;
+    // Remove obsolete field.
     delete project.dateMoved;
-    delete project.metadata; // Example metadata, adjust as needed
 
     // Insert the project into the deleted_projects collection
     await projectCollection.insertOne(project);
@@ -2267,7 +2713,6 @@ router.post("/restore-project/:id", async (req, res) => {
         // Set dateMoved and metadata for tasks
         const tasksToMove = tasks.map(task => ({
           ...task,
-          flagDeletion: 0
         }));
         await taskCollection.insertMany(tasksToMove);
         console.log("Tasks moved to deleted_tasks"); // Debugging line
@@ -2290,7 +2735,6 @@ router.post("/restore-project/:id", async (req, res) => {
         // Set dateMoved and metadata for the team
         const teamToMove = {
           ...team,
-          flagDeletion: 0
         };
         await teamCollection.insertOne(teamToMove);
         console.log("Team moved to deleted_teams"); // Debugging line
@@ -2644,7 +3088,7 @@ router.post('/invite-user', async (req, res) => {
     
     const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
 
-    const secureTransporter = await createSecureOAuth2Transporter();
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     const mailDetails = {
@@ -2759,7 +3203,7 @@ router.post("/register/:token", async (req, res) => {
     const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
     let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
 
-    const secureTransporter = await createSecureOAuth2Transporter();
+    const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let mailDetails = {
