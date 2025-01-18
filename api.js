@@ -482,7 +482,8 @@ router.post('/reset-password', async (req, res) =>
         const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
-          await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: hashedPassword}});
+          var enterNewPassword = await encryptClient.encrypt(hashedPassword, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+          await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: enterNewPassword}});
           res.status(200).json({ message: "Password has been changed successfully." });
         } catch(error) {
           return res.json({status: "error", data: error})
