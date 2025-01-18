@@ -327,7 +327,7 @@ router.post("/login", async (req, res) => {
 
     console.log("Email found");
  
-  const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
+    const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
 
   if (!isPasswordValid) {
     error = "Invalid email or password";
@@ -1910,14 +1910,18 @@ router.post("/user/request-delete/:userId", async (req, res) => {
 
     // Validate that the user exists.
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    console.log("Found user information:\n");
+    console.log(user);
+
     // Verify if user entered in correct password before proceeding with deletion.
     const hashedPassword = await bcrypt.hash(password, 10);
     const match = await bcrypt.compare(hashedPassword, user.password);
-	  
+
     if (!match){
       return res.status(401).send("Incorrect password. Please try again.");
     }
