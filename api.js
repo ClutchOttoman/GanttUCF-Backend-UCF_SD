@@ -1915,7 +1915,9 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     }
 
     // Verify if user entered in correct password before proceeding with deletion.
-    const match = await bcrypt.compare(password, user.password);
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const match = await bcrypt.compare(hashedPassword, user.password);
+	  
     if (!match){
       return res.status(401).send("Incorrect password. Please try again.");
     }
