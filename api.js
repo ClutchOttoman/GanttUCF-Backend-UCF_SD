@@ -389,8 +389,8 @@ router.post('/forgot-password', async (req, res) =>
       const secret = process.env.JWT_SECRET + user.password;
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
-      let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
-      //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
+      //let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
+      let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
       const secureTransporter = await createSecureTransporter();
       if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -482,8 +482,11 @@ router.post('/reset-password', async (req, res) =>
         const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
-          await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: hashedPassword}});
+
+          var enterNewPassword = await encryptClient.encrypt(hashedPassword, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+          await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: enterNewPassword}});
           res.status(200).json({ message: "Password has been changed successfully." });
+
         } catch(error) {
           return res.json({status: "error", data: error})
         }
