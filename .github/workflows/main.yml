@@ -4,13 +4,21 @@ on:
     branches:
       - master
 jobs:
-  my_job:
-    name: deploy to DO droplet
-    runs-on: ubunbtu-latest
+  deploy_backend:
+    runs-on: ubuntu-latest
     steps:
-      - name: Deploy NodeJS backend
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy
         run: |
-          sshpass -p ${{ secrets.SSH_PASSWORD }} ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.DROPLET_IP }} << EOF
+         sshpass -p ${{ secrets.SSH_PASSWORD }} ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.DROPLET_IP }} << EOF
             cd /Ganttify/Ganttify-Backend-UCF_SD
             git pull origin master
             npm install
