@@ -14,8 +14,12 @@ jobs:
         run: npm install
 
       - name: Deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_USERNAME : ${{secrets.SSH_USERNAME}}
         run: |
-         sshpass -p ${{ secrets.SSH_PASSWORD }} ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.DROPLET_IP }} << EOF
+          sshpass -p "${SSH_KEY}" ssh -o StrictHostKeyChecking=no ${SSH_USERNAME}@${SSH_HOST} << 'EOF'
             cd /Ganttify/Ganttify-Backend-UCF_SD
             git pull origin master
             npm install
