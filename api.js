@@ -1949,7 +1949,8 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const { name, email, phone } = req.body;
+  // const { name, email, phone } = req.body;
+  const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
     const db = client.db("ganttify");
@@ -1961,18 +1962,29 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    const updates = {};
+    if (name !== undefined) updates.name = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (phone !== undefined) updates.phone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (discordAccount !== undefined && discordAccount !== '') updates.discordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (pronouns !== undefined && pronouns !== '') updates.pronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (timezone !== undefined && timezone !== '') updates.timezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
     // Update the user with the new data
     const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name, email, phone } }
+      { $set: updates }
     );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found or no changes made." });
+    }
 
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
       { _id: new ObjectId(userId) },
       { projection: { password: 0 } }
     );
-
+    
     res.status(200).json(updatedUser);
   } catch (error) {
     console.error("Error updating user:", error);
@@ -2002,8 +2014,6 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     console.log(user);
 
     // Verify if user entered in correct password before proceeding with deletion.
-    // const hashedPassword = await bcrypt.hash(password, 10);
-    // const match = await bcrypt.compare(hashedPassword, user.password);
     const match = await bcrypt.compare(password, user.password);
 
     if (!match){
@@ -2475,7 +2485,7 @@ router.get("/user/:userId", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
+    
     res.status(200).json(user);
   } catch (error) {
     console.error("Error finding user:", error);
