@@ -199,8 +199,8 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + enterPassword.toString();
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
-    //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
-    let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
+    let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
+    //let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
     // Use secure transporter.
     const secureTransporter = await createSecureTransporter();
