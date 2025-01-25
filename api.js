@@ -802,7 +802,7 @@ router.post('/createtask', async (req, res) => {
     startDateTime,
     color = '#DC6B2C',
     pattern = '',
-    patternColor = '000000',
+    patternColor = '#000000',
     taskCategory = '', // Task category is optional
     prerequisiteTasks = [], // Stores all other task ids that this task depends on being done.
     dependentTasks = [],// Stores all other task ids who are dependent on this task being done.
@@ -952,7 +952,7 @@ router.put("/tasks/:id", async (req, res) => {
   const updateFields = req.body;
   let error = "";
 
-  console.log(id);
+  console.log("Updating task: " + id);
   
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
@@ -965,92 +965,113 @@ router.put("/tasks/:id", async (req, res) => {
     const taskCategoriesCollection = db.collection("task_categories");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
 
-    // If the progress changed for this task changed, or if its prequisites or dependencies changed, check it.
-    if ((updateFields.progress && updateFields.progress !== task.progress) || updateFields.dependentTasks || updateFields.prerequisiteTasks){
+    // Ensure that the progress status of this task is updated before proceeding.
+    // If this task happens to be the one that fulfills the dependency's prequisities...
+    await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
 
-      // Assume that the prequisites for this task changed.
-      if (updateFields.prerequisiteTasks){
+    // Assumes that each array has unique object id values and are not repeated.
+    // This function does not check for order of array content, 
+    // only if the arrays have the same content and are of the same length.
+    // Returns true if the arrays have the same content (ignoring order), false otherwise.
+    const isDifferentObjectIdArrays = (x, y) => {
 
-        // Determine which prequisites, if any, were added or removed from the database.
-        // Assume that newPrecedeTasks and removePrecedeTasks for this task obtain objectIds.
-        var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
-        var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
+      console.log("isDifferentObjectIdArrays() = false for now.");
+      // Handle edge cases where both "arrays" are undefined or nonexistent.
+      if (!x && !y) return true; // both entries are identical by being undefined or empty.
+      if ((!x && y) || (x && !y)) return false;
 
-        if (newPrecedeTasks && newPrecedeTasks.length > 0){
+      const set1 = new Set(x);
+      const set2 = new Set(y);
 
-          // Debugging purposes. 
-          console.log("List of prequisite task ids to add: \n" + newPrecedeTasks); 
+      if (set1.size === set2.size) return false; // arrays are not different.
+      console.log("Array x content: " + x);
+      console.log("Array y content: " + y);
+      const difference = set1.difference(set2);
+      if (difference.length === 0) return false;
+      console.log("isDifferentObjectIdArrays() = true.");
+      return true;
 
-          // Added these new prequisites attached to this task. 
-          await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: {$each: newPrecedeTasks}}});
+    }
 
-          // Update that this task is now a dependency to those new prequisite tasks.
-          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: task._id}});
+    // If the user changed the prequisites for this task: 
+    if (isDifferentObjectIdArrays(updateFields.prerequisiteTasks, task.prerequisiteTasks)){
 
-        }
+      // Determine which prequisites, if any, were added or removed from the database.
+      var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
+      var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
 
-        if (removePrecedeTasks && removePrecedeTasks.length > 0){
+      if (newPrecedeTasks && newPrecedeTasks.length > 0){
 
-          // Debugging purposes. 
-          console.log("List of prequisite tasks ids remove: \n" + removePrecedeTasks); 
+        // Debugging purposes. 
+        console.log("List of prequisite task ids to add: \n" + newPrecedeTasks); 
 
-          // Remove these new prequisites attached to this task. 
-          await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: {$in: removePrecedeTasks}}});
+        // Added these new prequisites attached to this task. 
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: {$each: newPrecedeTasks}}});
 
-          // Update that this task is no longer a dependency to those new prequisite tasks.
-          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: task._id}});
+        // Update that this task is now a dependency to those new prequisite tasks.
+        await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: new ObjectId(id)}});
 
-        }
+      }
 
-        // Reexamine if all of this task's prequisites are completed or not.
-        var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-        console.log("All completed prequisites:\n" + allCompletedPrequisites);
-        console.log("Number of updated completed prequisites for this task: " + allCompletedPrequisites.length + ". Out of a total of " + task.prerequisiteTasks.length + " prequisite tasks."); // debugging purposes.
+      if (removePrecedeTasks && removePrecedeTasks.length > 0){
+
+        // Debugging purposes. 
+        console.log("List of prequisite tasks ids remove: \n" + removePrecedeTasks); 
+
+        // Remove these new prequisites attached to this task. 
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: {$in: removePrecedeTasks}}});
+
+        // Update that this task is no longer a dependency to those new prequisite tasks.
+        await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
+
+      }
+
+      // Reexamine if all of this task's prequisites are completed or not.
+      var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+      console.log("All completed prequisites:\n" + allCompletedPrequisites);
+      console.log("Number of updated completed prequisites for this task: " + allCompletedPrequisites.length + ". Out of a total of " + updateFields.prerequisiteTasks.length + " prequisite tasks."); // debugging purposes.
+      
+      if ((task.prerequisiteTasks.length == 0 || allCompletedPrequisites.length == task.prerequisiteTasks.length)){
+        // This task's prequisites are all completed, or this task no longer has any prequisites attached to it.
+        updateFields.allPrequisitesDone = true;
+      } else {
+        // Not all of this task's requisites are done.
+        updateFields.allPrequisitesDone = false;
+      }
+    }
+
+    // If this task's completion status has changed, evaluate the task's dependencies.
+    if (updateFields.progress && updateFields.progress !== task.progress){
+
+      // Ensure that the progress status of this task is updated before proceeding.
+      // If this task happens to be the one that fulfills the dependency's prequisities...
+      await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
+
+      // Find all dependencies of this task. 
+      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+
+      for (const dependTasks of allDependencies) {
         
-        // Silver the hedgehog bookmark.
-        if ((task.prerequisiteTasks.length == 0 || allCompletedPrequisites.length == task.prerequisiteTasks.length)){
-          // This task's prequisites are all completed, or this task no longer has any prequisites attached to it.
-          updateFields.allPrequisitesDone = true;
+        // Check each dependent task's prequisities.
+        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        
+        // If this task caused those tasks status to change...
+        if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
+          
+          console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
+
         } else {
-          // Not all of this task's requisites are done.
-          updateFields.allPrequisitesDone = false;
+
+          console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
+
         }
-
-      }
-
-      // If this task's completion status has changed, evaluate the task's dependencies.
-      if (updateFields.progress && updateFields.progress !== task.progress){
-
-        // Ensure that the progress status of this task is updated before proceeding.
-        // If this task happens to be the one that fulfills the dependency's prequisities...
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
-
-        // Find all dependencies of this task. 
-        var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
-
-        for (const dependTasks of allDependencies) {
-          
-          // Check each dependent task's prequisities.
-          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-          
-          // If this task caused those tasks status to change...
-          if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
-            
-            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
-            
-            // Update the status of this dependency.
-            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
-
-          } else {
-
-            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
-            
-            // Update the status of this dependency.
-            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
-
-          }
-        }        
-      }
+      }        
     }
 
     // Convert any provided ObjectId fields
@@ -1221,7 +1242,8 @@ router.delete("/tasks/:id", async (req, res) => {
   const { projectId: projectId } = req.body;
   let error = "";
 
-  console.log(taskId, projectId)
+  console.log("Deleting task: " + taskId + "in project: " +  projectId);
+
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
@@ -1229,18 +1251,30 @@ router.delete("/tasks/:id", async (req, res) => {
     const userCollection = db.collection("userAccounts");
     const teamCollection = db.collection("teams");
     const task = await taskCollection.findOne({_id: new ObjectId(taskId)});
+
+    if (!task){
+      return res.status(404).send("Task does not exist");
+    }
     
     // Prequisite tasks for this deleted task no longer have this task as a dependency.
-    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(taskId)}});}
+    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {
+      console.log("List of task prequisites to handle:\n" + task.prerequisiteTasks);
+      console.log("Removing this task as it prequisite's dependency: " + taskId);
+      await taskCollection.updateMany(
+      {_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, 
+      {$pull: {dependentTasks: new ObjectId(taskId)}});
+    }
 
     // Dependent tasks for this deleted task no longer have this task as a prequisite.
     if (task.dependentTasks && task.dependentTasks.length > 0) {
-      
+
+      console.log("List of task dependencies to handle:\n" + task.dependentTasks);
+
       // Remove this task as a prequisite to those tasks.
       await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}});
 
       // Find all dependencies of this task. 
-      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
       
       // Determine if removing this task consequentially caused its dependent tasks to remove a prequisite,
       // and potentially now having its prequisite tasks completed. 
@@ -1433,7 +1467,7 @@ router.post("/assigntaskstoproject", async (req, res) => {
 // Project CRUD Operations
 //-----------------> Create a project / Import a project <-----------------//
 router.post("/createproject", async (req, res) => {
-  const { nameProject, isVisible = 1, founderId, flagDeletion = 0, csvData } = req.body;
+  const { nameProject, isVisible = 1, founderId, csvData } = req.body;
   let error = "";
 
   if (!nameProject || !founderId) {
@@ -1476,7 +1510,6 @@ router.post("/createproject", async (req, res) => {
       tasks: [],
       isVisible,
       founderId: new ObjectId(founderId),
-      flagDeletion,
     };
 
     // Insert project
