@@ -141,6 +141,7 @@ router.post("/register", async (req, res) => {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const tempCollection = db.collection("unverifiedUserAccounts");
+    const deletedAccountCollection = db.collection("deleted_user_accounts");
 
     // Ensure that TTL exists.
     await tempCollection.createIndex(
@@ -153,11 +154,12 @@ router.post("/register", async (req, res) => {
 
     // Make an encrypted query against both the temporary and verified databases.
     var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-	  const existingUser = await userCollection.findOne({email: queryEncryptedEmail });
-    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail });
+	  const existingUser = await userCollection.findOne({email: queryEncryptedEmail});
+    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail});
+    const existingDeletionUser = await deletedAccountCollection.findOne({email: queryEncryptedEmail});
 
     // Check if the user already exists in the verified user account database.
-    if (existingUser || existingTempUser) {
+    if (existingUser || existingTempUser || existingDeletionUser) {
       return res.status(400).json({ error: "Email has already verified or registered." });
     }
 
@@ -502,71 +504,6 @@ router.post('/reset-password', async (req, res) =>
       res.status(500).json({ message: error });
     } 
 });
-
-//-----------------> Edit User Profile Details Endpoint <-----------------//
-// Edits profile details that do not require second verifcation.
-// router.post("/edit-user-profile-details", async (req, res) => {
-//   const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
-//   let error = "";
-
-//   try {
-
-//     const db = client.db("ganttify");
-//     const userCollection = db.collection("userAccounts");
-//     const user = await userCollection.findOne({_id: new ObjectId(id)});
-
-//     if (!user){return res.status(404).send("User profile does not exist.");}
-    
-//     // Debugging purposes only.
-//     // console.log("Old user details:");
-//     // console.log(user);
-
-//     var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    
-//     // Update only if necessary.
-//     // upsert field ($or) determines if the update will perform.
-//     // Approach taken from MongoDB documentation and here:
-//     // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
-//     await userCollection.updateOne(
-//       {_id: new ObjectId(id), 
-//         $or:
-//         [
-//           {name: {$ne: ["name", updateName]}},
-//           {username: {$ne: ["username", updateUsername]}},
-//           {phone: {$ne: ["phone", updatePhone]}},
-//           {pronouns: {$ne: ["pronouns", updatePronouns]}},
-//           {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
-//           {organization: {$ne: ["organization", updateOrganization]}},
-//           {timezone: {$ne: ["timezone", updateTimezone]}}
-//         ]
-//       },
-//       {$set: 
-//         {
-//           name: updateName, 
-//           username: updateUsername, 
-//           phone: updatePhone, 
-//           pronouns: updatePronouns,
-//           discordAccount: updateDiscord,
-//           organization: updateOrganization,
-//           timezone: updateTimezone
-//         },
-//       } 
-//     );
-
-//     return res.status(200).send("User profile has been successfully updated.");
-    
-//   } catch (error) {
-//     console.error('An error has occurred:', error);
-//     return res.status(500).json({ error: 'Internal server error' });
-//   }
-
-// });
 
 //-----------------> Edit Email Endpoint <-----------------//
 // Allows logged in users to change their email account.
@@ -951,9 +888,8 @@ router.put("/tasks/:id", async (req, res) => {
   const { id } = req.params;
   const updateFields = req.body;
   let error = "";
-
   console.log("Updating task: " + id);
-  
+
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
     return res.status(400).json({ error });
@@ -964,10 +900,6 @@ router.put("/tasks/:id", async (req, res) => {
     const taskCollection = db.collection("tasks");
     const taskCategoriesCollection = db.collection("task_categories");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
-
-    // Ensure that the progress status of this task is updated before proceeding.
-    // If this task happens to be the one that fulfills the dependency's prequisities...
-    await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
 
     // Assumes that each array has unique object id values and are not repeated.
     // This function does not check for order of array content, 
@@ -983,47 +915,62 @@ router.put("/tasks/:id", async (req, res) => {
       const set1 = new Set(x);
       const set2 = new Set(y);
 
+      // For each item in each array, convert the string representation of the ObjectId 
+
       if (set1.size === set2.size) return false; // arrays are not different.
       console.log("Array x content: " + x);
       console.log("Array y content: " + y);
       const difference = set1.difference(set2);
+      console.log("Difference = " + Array.from(difference));
       if (difference.length === 0) return false;
       console.log("isDifferentObjectIdArrays() = true.");
       return true;
 
     }
 
-    // If the user changed the prequisites for this task: 
-    if (isDifferentObjectIdArrays(updateFields.prerequisiteTasks, task.prerequisiteTasks)){
+    // Note: taskPrequisiteTasks should be an array of ObjectIds. 
+    if (isDifferentObjectIdArrays(task.prerequisiteTasks, updateFields.prerequisiteTasks)){
 
       // Determine which prequisites, if any, were added or removed from the database.
-      var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
-      var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
+      // Since objectIds gurantee uniqueness, use sets to determine what needs to be removed or updated.
+      const incomingPrequisites = new Set(updateFields.prerequisiteTasks);
+      const inDatabasePrequisites = new Set(task.prerequisiteTasks);
+      const addedPrequisites = incomingPrequisites.difference(inDatabasePrequisites);
+      const removedPrequisites = inDatabasePrequisites.difference(incomingPrequisites);
 
-      if (newPrecedeTasks && newPrecedeTasks.length > 0){
+      if (addedPrequisites.size > 0){
 
         // Debugging purposes. 
-        console.log("List of prequisite task ids to add: \n" + newPrecedeTasks); 
+        // Convert the set to an ObjectId array.
+        var newPrecedeTasks = Array.from(addedPrequisites);
+        console.log("List of prequisite task ids to add: \n" + newPrecedeTasks);
 
         // Added these new prequisites attached to this task. 
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: {$each: newPrecedeTasks}}});
+        for (a in newPrecedeTasks){
+          console.log("a = " + a.toString());
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: new ObjectId(a)}});
+        }
+        //await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: (newPrecedeTasks.map((id) => new ObjectId(id)))}}});
 
         // Update that this task is now a dependency to those new prequisite tasks.
         await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: new ObjectId(id)}});
 
+      } else {
+        console.log("List of prequisite task ids to add: N/A");
       }
 
-      if (removePrecedeTasks && removePrecedeTasks.length > 0){
+      if (removedPrequisites.size > 0){
 
-        // Debugging purposes. 
-        console.log("List of prequisite tasks ids remove: \n" + removePrecedeTasks); 
-
-        // Remove these new prequisites attached to this task. 
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: {$in: removePrecedeTasks}}});
+        // Debugging purposes.
+        var removePrecedeTasks = Array.from(removedPrequisites);
+        console.log("List of prequisite task ids to add: \n" + Array.from(removedPrequisites));
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removePrecedeTasks.map((id) => new ObjectId(id))}});
 
         // Update that this task is no longer a dependency to those new prequisite tasks.
-        await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
+        await taskCollection.updateMany({_id: {$in: removePrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
 
+      } else {
+        console.log("List of prequisite task ids to remove: N/A");
       }
 
       // Reexamine if all of this task's prequisites are completed or not.
@@ -1512,7 +1459,7 @@ router.post("/createproject", async (req, res) => {
       founderId: new ObjectId(founderId),
     };
 
-    // Insert project
+    // Insert project.
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
 
@@ -2093,7 +2040,6 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  // const { name, email, phone } = req.body;
   const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
@@ -2363,6 +2309,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
 
       // Set up this restoration link.
+      //let restoreLink = `http://206.81.1.248/restore-account/${userId}/${newToken}`;
       let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
@@ -2394,7 +2341,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
 });
 
-// Endpoint to restore the account via clicking on the email link.
+// Account Restoration
 router.post("/user/restore-account/:userId/:token", async (req, res) => {
   const { userId, token } = req.params;
 
@@ -2410,33 +2357,33 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
     const deletedAccountTeamsCollection = db.collection("deleted_acount_teams");
     
     // Ensure that TTL exists.
-    await deletedAccountCollection.createIndex(
-      { "accountDeleted": 1 },
-      {
-        expireAfterSeconds: 259200, // expires in 72 hours.
-      }
-    );
+    // await deletedAccountCollection.createIndex(
+    //   { "accountDeleted": 1 },
+    //   {
+    //     expireAfterSeconds: 259200, // expires in 72 hours.
+    //   }
+    // );
 
-    await deletedAccountProjectsCollection.createIndex(
-      { "dateMoved": 1 },
-      {
-        expireAfterSeconds: 2592000, // expires in 72 hours.
-      }
-    );
+    // await deletedAccountProjectsCollection.createIndex(
+    //   { "dateMoved": 1 },
+    //   {
+    //     expireAfterSeconds: 2592000, // expires in 72 hours.
+    //   }
+    // );
 
-    await deletedAccountTasksCollection.createIndex(
-      { "dateMoved": 1 },
-      {
-        expireAfterSeconds: 2592000,
-      }
-    );
+    // await deletedAccountTasksCollection.createIndex(
+    //   { "dateMoved": 1 },
+    //   {
+    //     expireAfterSeconds: 2592000,
+    //   }
+    // );
 
-    await deletedAccountTeamsCollection.createIndex(
-      { "dateMoved": 1 },
-      {
-        expireAfterSeconds: 2592000,
-      }
-    );
+    // await deletedAccountTeamsCollection.createIndex(
+    //   { "dateMoved": 1 },
+    //   {
+    //     expireAfterSeconds: 2592000,
+    //   }
+    // );
 
     // Find the user. Ensure that the user does not attempt to use this endpoint when the user account already exists.
     const exist = await userCollection.findOne({_id: new ObjectId(userId) });
@@ -3309,7 +3256,7 @@ router.get('/accept-invite/:token', async (req, res) => {
           { _id: new ObjectId(project.team) },
           { $addToSet: { members: user._id } }
         );
-        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
+        res.status(200).send("User has been successfully added to a project.");
       } catch (error) {
         console.error('Invalid or expired token:', error);
         res.status(400).send('Invalid or expired token');
