@@ -1,3 +1,4 @@
+
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
 const LOCALHOST = `http://localhost:5173`;
@@ -332,7 +333,7 @@ router.post("/login", async (req, res) => {
 
     console.log("Email found");
  
-  const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
+    const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
 
   if (!isPasswordValid) {
     error = "Invalid email or password";
@@ -487,9 +488,11 @@ router.post('/reset-password', async (req, res) =>
         const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
+
           var enterNewPassword = await encryptClient.encrypt(hashedPassword, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
           await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {password: enterNewPassword}});
           res.status(200).json({ message: "Password has been changed successfully." });
+
         } catch(error) {
           return res.json({status: "error", data: error})
         }
@@ -855,8 +858,6 @@ router.post('/createtask', async (req, res) => {
   } else {
     console.log('No task category provided.');
   }
-
-  
   
   // Create the new task object with taskCategoryId if available
   const newTask = {
@@ -874,8 +875,8 @@ router.post('/createtask', async (req, res) => {
     taskCategory,
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
-    dependentTasks: [], // Stores all other task ids who are dependent on this task being done.
-    allPrequisitesDone: prequisitesDone // Indicates if all of this task's prequisites are done.
+    dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
+    allPrequisitesDone: false // True ndicates if all of this task's prequisites are done; false if not all prequisite tasks are completed or has no prequisite tasks otherwise.
   };
 
     // Insert the new task into the tasks collection
@@ -903,25 +904,24 @@ router.post('/createtask', async (req, res) => {
       { $push: { tasksUnder: taskId } }
     );
 
-    var prequisitesDone = false;
     // Determine if the list of prequisities for this task have already been completed.
     var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-  
-    // Check if the user assigned prequisite tasks for this new task.
-    if (prerequisiteTasks.length > 0){
 
-    // For each prequisite task, add this task as a dependency.
-    await taskCollection.updateMany(
-      {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
-      {$push: {dependentTasks: taskId}}
-    );
+      // Check if the user assigned prequisite tasks for this new task.
+      if (prerequisiteTasks.length > 0){
 
-    // All of this task's prequisites are done. 
-    if (prerequisiteTasks.length == allCompletedPrequisites.length){
-      prequisitesDone = true;
+        // For each prequisite task, add this task as a dependency.
+        await taskCollection.updateMany(
+          {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
+          {$push: {dependentTasks: taskId}}
+        );
+
+        // All of this task's prequisites are done. 
+        if (prerequisiteTasks.length == allCompletedPrequisites.length){
+          await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
+        }
+
     }
-
-  }
 
     // Respond with the newly created task details
     res.status(201).json({ ...newTask, _id: taskId });
@@ -973,13 +973,14 @@ router.put("/tasks/:id", async (req, res) => {
       if (updateFields.prerequisiteTasks){
 
         // Determine which prequisites, if any, were added or removed from the database.
+        // Assume that newPrecedeTasks and removePrecedeTasks for this task obtain objectIds.
         var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
         var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
 
         if (newPrecedeTasks && newPrecedeTasks.length > 0){
 
           // Debugging purposes. 
-          console.log(newPrecedeTasks); 
+          console.log("List of prequisite task ids to add: \n" + newPrecedeTasks); 
 
           // Added these new prequisites attached to this task. 
           await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: newPrecedeTasks}});
@@ -992,7 +993,7 @@ router.put("/tasks/:id", async (req, res) => {
         if (removePrecedeTasks && removePrecedeTasks.length > 0){
 
           // Debugging purposes. 
-          console.log("List of prequisite tasks to remove: \n" + removePrecedeTasks); 
+          console.log("List of prequisite tasks ids remove: \n" + removePrecedeTasks); 
 
           // Remove these new prequisites attached to this task. 
           await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: removePrecedeTasks}});
@@ -1021,33 +1022,32 @@ router.put("/tasks/:id", async (req, res) => {
 
         // Ensure that the progress status of this task is updated before proceeding.
         // If this task happens to be the one that fulfills the dependency's prequisities...
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: task.allowEmailNotify}});
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
 
         // Find all dependencies of this task. 
         var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
 
-        for (const prequisiteTask of allDependencies) {
+        for (const dependTasks of allDependencies) {
           
           // Check each dependent task's prequisities.
-          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: prequisiteTask.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
           
           // If this task caused those tasks status to change...
-          if (prequisiteTask.prerequisiteTasks.length == completedDependPrequisites.length){
+          if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
             
-            console.log("Dependency " + prequisiteTask.taskTitle +  " of task " + task.taskTitle + " prequisities are now all completed.");
+            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
             
             // Update the status of this dependency.
-            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {allPrequisitesDone: true}});
+            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
 
           } else {
 
-            console.log("Dependency " + prequisiteTask.taskTitle +  " of task " + task.taskTitle + " prequisities are no longer all completed.");
+            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
             
             // Update the status of this dependency.
-            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {allPrequisitesDone: false}});
+            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
 
           }
-
         }        
       }
     }
@@ -1225,8 +1225,6 @@ router.delete("/tasks/:id", async (req, res) => {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const projectsCollection = db.collection("projects");
-
-    // Update dependencies and prequisites for this deleted task.
     const task = await taskCollection.findOne({_id: new ObjectId(taskId)});
     
     // Prequisite tasks for this deleted task no longer have this task as a dependency.
@@ -1234,8 +1232,38 @@ router.delete("/tasks/:id", async (req, res) => {
 
     // Dependent tasks for this deleted task no longer have this task as a prequisite.
     if (task.dependentTasks && task.dependentTasks.length > 0) {
-        console.log(task.dependentTasks);
-        await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})}
+      
+      // Remove this task as a prequisite to those tasks.
+      await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})
+
+      // Find all dependencies of this task. 
+      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+      
+      // Determine if removing this task consequentially caused its dependent tasks to remove a prequisite,
+      // and potentially now having its prequisite tasks completed. 
+      for (const dependTasks of allDependencies) {
+        
+        // Check each dependent task's prequisities.
+        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        
+        // If this task caused those tasks status to change...
+        if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
+          
+          console.log("After deleting its prequisite task, dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
+
+        } else {
+
+          console.log("After deleting its prequisite task, dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
+
+        }
+      }      
+    }
 
     // Deleting task in tasks collection
     const taskDeleteResult = await taskCollection.deleteOne({ _id: new ObjectId(taskId) });
@@ -1383,62 +1411,117 @@ router.post("/assigntaskstoproject", async (req, res) => {
 });
 
 // Project CRUD Operations
-//-----------------> Create a project <-----------------//
+//-----------------> Create a project / Import a project <-----------------//
 router.post("/createproject", async (req, res) => {
-  const {
-    nameProject,
-    team,
-    tasks,
-    isVisible = 1,
-    founderId,
-    group,
-  } = req.body;
+  const { nameProject, isVisible = 1, founderId, flagDeletion = 0, csvData } = req.body;
   let error = "";
 
   if (!nameProject || !founderId) {
-    error = "Project name and founder ID are required";
-    return res.status(400).json({ error });
+    return res.status(400).json({ error: "Project name required." });
   }
 
   try {
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
+    const tasksCollection = db.collection("tasks");
     const teamCollection = db.collection("teams");
     const userCollection = db.collection("userAccounts");
 
+    
+    let parsedCSV = [];
+    if (csvData) {
+      try {
+        if (typeof csvData === "string") {
+          parsedCSV = await parseCSV(csvData.trim());
+        } else if (Array.isArray(csvData)) {
+          parsedCSV = csvData.filter((row) => row && Object.keys(row).length > 0);
+        } else {
+          return res.status(400).json({ error: "CSV data format is invalid." });
+        }
+      } catch (parseError) {
+        console.error("Error parsing CSV data:", parseError);
+        return res.status(400).json({ error: "Error parsing CSV data." });
+      }
+
+      if (!parsedCSV.length) {
+        return res.status(400).json({ error: "CSV data is empty or invalid." });
+      }
+    }
+
+    // Create project object
     const newProject = {
       nameProject,
       dateCreated: new Date(),
-      team: new ObjectId(),
-      tasks: [], 
+      team: null,
+      tasks: [],
       isVisible,
       founderId: new ObjectId(founderId),
-      group: [new ObjectId()],
+      flagDeletion,
     };
 
+    // Insert project
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
-    const newTeam = {founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId],};
+
+    // Insert tasks if CSV data exists
+    if (parsedCSV.length > 0) {
+      const taskDocs = parsedCSV.map((task) => {
+        console.log('Raw Task Data:', task); // Debugging
+
+        const taskTitle = task.Task?.trim() || "Untitled Task"; 
+        const startDate = task.Start ? new Date(task.Start) : null;
+        const endDate = task.End ? new Date(task.End) : null;
+
+        // Handle "No category" case or empty category
+        const taskCategory = task.Category && task.Category.trim() !== "No category" ? task.Category : "";
+
+        return {
+          taskTitle,
+          description: task.Description || "",
+          startDateTime: startDate && !isNaN(startDate.getTime()) ? startDate : null,
+          dueDateTime: endDate && !isNaN(endDate.getTime()) ? endDate : null,
+          taskCreated: new Date(),
+          taskCategory,
+          taskCategoryId: null,
+          color: task.Color,
+          pattern: task.Pattern || "No Pattern",
+          progress: "Not Started",
+          assignedTasksUsers: [],
+          prerequisiteTasks: [],
+          dependentTasks: [],
+          allPrequisitesDone: false,
+          tiedProjectId: projectId,
+          taskCreatorId: new ObjectId(founderId),
+        };
+      });
+
+      const insertedTasks = await tasksCollection.insertMany(taskDocs);
+      const taskIds = Object.values(insertedTasks.insertedIds);
+
+      // Update project with task references
+      await projectCollection.updateOne({ _id: projectId }, { $set: { tasks: taskIds } });
+    }
+
+    // Create team for the project
+    const newTeam = { founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId] };
     const team = await teamCollection.insertOne(newTeam);
 
-    await projectCollection.updateOne(
-      { _id: projectId },
-      { $set: { team: team.insertedId } }
-    );
+    await projectCollection.updateOne({ _id: projectId }, { $set: { team: team.insertedId } });
 
     await userCollection.updateOne(
       { _id: new ObjectId(founderId) },
       { $push: { projects: projectId } }
     );
 
-    res.status(201).json({ ...newProject, _id: projectId, team: team.insertedId });
+    res.status(201).json({
+      success: true,
+      project: { ...newProject, _id: projectId, team: team.insertedId },
+      csvData: parsedCSV.length > 0 ? parsedCSV : "No CSV data provided",
+    });
 
   } catch (error) {
-
     console.error("Error creating project:", error);
-    error = "Internal server error";
-    res.status(500).json({ error });
-    
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1562,7 +1645,6 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
   const { id } = req.params;
   const { nameProject } = req.body;
   let error = "";
-  console.log("new project name: " + nameProject);
 
   // Validate the project ID
   if (!ObjectId.isValid(id)) {
@@ -1610,6 +1692,34 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+//----------------> Fetch the project by ID (added) <---------//
+router.get("/projects/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+      const db = client.db("ganttify");
+      const projectCollection = db.collection("projects");
+      const tasksCollection = db.collection("tasks");
+
+      // Fetch the project by its ID
+      const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+
+      if (!project) {
+          return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Fetch tasks associated with the project
+      const tasks = await tasksCollection.find({ projectId: new ObjectId(projectId) }).toArray();
+
+      // Return the project data along with tasks
+      res.status(200).json({ project, tasks });
+  } catch (error) {
+      console.error("Error fetching project:", error);
+      res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 //-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
@@ -1845,7 +1955,8 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const { name, email, phone } = req.body;
+  // const { name, email, phone } = req.body;
+  const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
     const db = client.db("ganttify");
@@ -1857,18 +1968,29 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    const updates = {};
+    if (name !== undefined) updates.name = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (phone !== undefined) updates.phone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (discordAccount !== undefined && discordAccount !== '') updates.discordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (pronouns !== undefined && pronouns !== '') updates.pronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (timezone !== undefined && timezone !== '') updates.timezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
     // Update the user with the new data
     const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name, email, phone } }
+      { $set: updates }
     );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found or no changes made." });
+    }
 
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
       { _id: new ObjectId(userId) },
       { projection: { password: 0 } }
     );
-
+    
     res.status(200).json(updatedUser);
   } catch (error) {
     console.error("Error updating user:", error);
@@ -1889,12 +2011,17 @@ router.post("/user/request-delete/:userId", async (req, res) => {
 
     // Validate that the user exists.
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    console.log("Found user information:\n");
+    console.log(user);
+
     // Verify if user entered in correct password before proceeding with deletion.
     const match = await bcrypt.compare(password, user.password);
+
     if (!match){
       return res.status(401).send("Incorrect password. Please try again.");
     }
@@ -1907,7 +2034,9 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+    let link = GANTTIFY_LINK+`/confirm-delete/${userId}/${token}`;
+    //let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+
     let mailDetails = {
       from: process.env.USER_EMAIL,
       to: email,
@@ -2098,7 +2227,8 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
 
       // Set up this restoration link.
-      let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
+      let restoreLink = GANTTIFY_LINK+`/restore-account/${userId}/${newToken}`;
+      //let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
       let mailDetails = {
@@ -2364,7 +2494,7 @@ router.get("/user/:userId", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
+    
     res.status(200).json(user);
   } catch (error) {
     console.error("Error finding user:", error);
@@ -3066,7 +3196,7 @@ router.post('/invite-user', async (req, res) => {
     const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
     const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
     
-    const link = user ? GANTTIFY_LINK+`/accept-invite/${token}` : GANTTIFY_LINK+`/register/${token}`;
+    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -3181,7 +3311,7 @@ router.post("/register/:token", async (req, res) => {
     const insertedUser = await userCollection.insertOne(newUser);
     const secret = process.env.JWT_SECRET + hashedPassword;
     const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
-    let link = GANTTIFY_LINK+`/verify-invite/${verificationToken}`;
+    let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
