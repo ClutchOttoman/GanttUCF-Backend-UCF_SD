@@ -1,5 +1,11 @@
+
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
+const LOCALHOST = `http://localhost:5173`;
+const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
+if(process.env.NODE_ENV === 'dev'){
+    console.log("Running in Dev Mode");
+}
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -199,7 +205,7 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + enterPassword.toString();
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
-    let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
+    let link = GANTTIFY_LINK+`/verify-email/${tempIdString}/${token}`;
     //let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
     // Use secure transporter.
@@ -389,7 +395,7 @@ router.post('/forgot-password', async (req, res) =>
       const secret = process.env.JWT_SECRET + user.password;
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
-      let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
+      let link = GANTTIFY_LINK+`/reset-password/${user._id}/${token}`;
       //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
       const secureTransporter = await createSecureTransporter();
@@ -617,7 +623,7 @@ router.post("/edit-email", async (req, res) => {
     const temp = {tempId: user._id, email: newEmail, requestedEmailChangeTime: new Date()};
     await unverifiedEmailCollection.insertOne(temp);
 
-    let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
+    let link = GANTTIFY_LINK+`/edit-email/${user._id.toString()}/${token}`;
     //let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
     const secureTransporter = await createSecureTransporter();
@@ -2028,7 +2034,7 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    let link = `http://206.81.1.248/confirm-delete/${userId}/${token}`;
+    let link = GANTTIFY_LINK+`/confirm-delete/${userId}/${token}`;
     //let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
 
     let mailDetails = {
@@ -2221,7 +2227,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
 
       // Set up this restoration link.
-      let restoreLink = `http://206.81.1.248/restore-account/${userId}/${newToken}`;
+      let restoreLink = GANTTIFY_LINK+`/restore-account/${userId}/${newToken}`;
       //let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
