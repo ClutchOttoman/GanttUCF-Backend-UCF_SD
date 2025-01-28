@@ -901,73 +901,32 @@ router.put("/tasks/:id", async (req, res) => {
     const taskCategoriesCollection = db.collection("task_categories");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
 
-    // Assumes that each array has unique object id values and are not repeated.
-    // This function does not check for order of array content, 
-    // only if the arrays have the same content and are of the same length.
-    // Returns true if the arrays have the same content (ignoring order), false otherwise.
-    const isDifferentObjectIdArrays = (x, y) => {
+    const test = updateFields.prerequisiteTasks.map(n => new ObjectId(n));
+    console.log("Test = " + test);
 
-      console.log("isDifferentObjectIdArrays() = false for now.");
-      // Handle edge cases where both "arrays" are undefined or nonexistent.
-      if (!x && !y) return true; // both entries are identical by being undefined or empty.
-      if ((!x && y) || (x && !y)) return false;
-
-      const set1 = new Set(x);
-      const set2 = new Set(y);
-
-      // For each item in each array, convert the string representation of the ObjectId 
-
-      if (set1.size === set2.size) return false; // arrays are not different.
-      console.log("Array x content: " + x);
-      console.log("Array y content: " + y);
-      const difference = set1.difference(set2);
-      console.log("Difference = " + Array.from(difference));
-      if (difference.length === 0) return false;
-      console.log("isDifferentObjectIdArrays() = true.");
-      return true;
-
-    }
+    // Determine which prequisites, if any, were added or removed from the database.
+    // Since objectIds gurantee uniqueness, use sets to determine what needs to be removed or updated.
+    const addedPrequisites = test.filter(n => !task.prerequisiteTasks.includes(n));
+    const removedPrequisites = task.prerequisiteTasks.filter(n => !test.includes(n));
 
     // Note: taskPrequisiteTasks should be an array of ObjectIds. 
-    if (isDifferentObjectIdArrays(task.prerequisiteTasks, updateFields.prerequisiteTasks)){
+    if (addedPrequisites.length > 0 || removedPrequisites.length > 0){
 
-      // Determine which prequisites, if any, were added or removed from the database.
-      // Since objectIds gurantee uniqueness, use sets to determine what needs to be removed or updated.
-      const incomingPrequisites = new Set(updateFields.prerequisiteTasks);
-      const inDatabasePrequisites = new Set(task.prerequisiteTasks);
-      const addedPrequisites = incomingPrequisites.difference(inDatabasePrequisites);
-      const removedPrequisites = inDatabasePrequisites.difference(incomingPrequisites);
-
-      if (addedPrequisites.size > 0){
-
-        // Debugging purposes. 
-        // Convert the set to an ObjectId array.
-        var newPrecedeTasks = Array.from(addedPrequisites);
-        console.log("List of prequisite task ids to add: \n" + newPrecedeTasks);
-
-        // Added these new prequisites attached to this task. 
-        for (a in newPrecedeTasks){
-          console.log("a = " + a.toString());
-          await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: new ObjectId(a)}});
-        }
-        //await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: (newPrecedeTasks.map((id) => new ObjectId(id)))}}});
-
-        // Update that this task is now a dependency to those new prequisite tasks.
-        await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: new ObjectId(id)}});
+      if (addedPrequisites.length > 0){
+        
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: addedPrequisites.map(task => new ObjectId(task))}}});
+        await taskCollection.updateMany({_id: {$in: addedPrequisites.map(task => new ObjectId(task))}}, {$push: {dependentTasks: new ObjectId(id)}});
 
       } else {
         console.log("List of prequisite task ids to add: N/A");
       }
 
-      if (removedPrequisites.size > 0){
+      if (removedPrequisites.length > 0){
 
-        // Debugging purposes.
-        var removePrecedeTasks = Array.from(removedPrequisites);
-        console.log("List of prequisite task ids to add: \n" + Array.from(removedPrequisites));
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removePrecedeTasks.map((id) => new ObjectId(id))}});
+        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removedPrequisites.map((id) => new ObjectId(id))}});
 
         // Update that this task is no longer a dependency to those new prequisite tasks.
-        await taskCollection.updateMany({_id: {$in: removePrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
+        await taskCollection.updateMany({_id: {$in: removedPrequisites.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
 
       } else {
         console.log("List of prequisite task ids to remove: N/A");
@@ -2355,35 +2314,6 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
     const deletedAccountProjectsCollection = db.collection("deleted_account_projects");
     const deletedAccountTasksCollection = db.collection("deleted_account_tasks");
     const deletedAccountTeamsCollection = db.collection("deleted_acount_teams");
-    
-    // Ensure that TTL exists.
-    // await deletedAccountCollection.createIndex(
-    //   { "accountDeleted": 1 },
-    //   {
-    //     expireAfterSeconds: 259200, // expires in 72 hours.
-    //   }
-    // );
-
-    // await deletedAccountProjectsCollection.createIndex(
-    //   { "dateMoved": 1 },
-    //   {
-    //     expireAfterSeconds: 2592000, // expires in 72 hours.
-    //   }
-    // );
-
-    // await deletedAccountTasksCollection.createIndex(
-    //   { "dateMoved": 1 },
-    //   {
-    //     expireAfterSeconds: 2592000,
-    //   }
-    // );
-
-    // await deletedAccountTeamsCollection.createIndex(
-    //   { "dateMoved": 1 },
-    //   {
-    //     expireAfterSeconds: 2592000,
-    //   }
-    // );
 
     // Find the user. Ensure that the user does not attempt to use this endpoint when the user account already exists.
     const exist = await userCollection.findOne({_id: new ObjectId(userId) });
@@ -3193,7 +3123,7 @@ router.post('/invite-user', async (req, res) => {
     const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
     const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
     
-    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
+    // const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
