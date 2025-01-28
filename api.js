@@ -1383,62 +1383,117 @@ router.post("/assigntaskstoproject", async (req, res) => {
 });
 
 // Project CRUD Operations
-//-----------------> Create a project <-----------------//
+//-----------------> Create a project / Import a project <-----------------//
 router.post("/createproject", async (req, res) => {
-  const {
-    nameProject,
-    team,
-    tasks,
-    isVisible = 1,
-    founderId,
-    group,
-  } = req.body;
+  const { nameProject, isVisible = 1, founderId, flagDeletion = 0, csvData } = req.body;
   let error = "";
 
   if (!nameProject || !founderId) {
-    error = "Project name and founder ID are required";
-    return res.status(400).json({ error });
+    return res.status(400).json({ error: "Project name required." });
   }
 
   try {
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
+    const tasksCollection = db.collection("tasks");
     const teamCollection = db.collection("teams");
     const userCollection = db.collection("userAccounts");
 
+    
+    let parsedCSV = [];
+    if (csvData) {
+      try {
+        if (typeof csvData === "string") {
+          parsedCSV = await parseCSV(csvData.trim());
+        } else if (Array.isArray(csvData)) {
+          parsedCSV = csvData.filter((row) => row && Object.keys(row).length > 0);
+        } else {
+          return res.status(400).json({ error: "CSV data format is invalid." });
+        }
+      } catch (parseError) {
+        console.error("Error parsing CSV data:", parseError);
+        return res.status(400).json({ error: "Error parsing CSV data." });
+      }
+
+      if (!parsedCSV.length) {
+        return res.status(400).json({ error: "CSV data is empty or invalid." });
+      }
+    }
+
+    // Create project object
     const newProject = {
       nameProject,
       dateCreated: new Date(),
-      team: new ObjectId(),
-      tasks: [], 
+      team: null,
+      tasks: [],
       isVisible,
       founderId: new ObjectId(founderId),
-      group: [new ObjectId()],
+      flagDeletion,
     };
 
+    // Insert project
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
-    const newTeam = {founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId],};
+
+    // Insert tasks if CSV data exists
+    if (parsedCSV.length > 0) {
+      const taskDocs = parsedCSV.map((task) => {
+        console.log('Raw Task Data:', task); // Debugging
+
+        const taskTitle = task.Task?.trim() || "Untitled Task"; 
+        const startDate = task.Start ? new Date(task.Start) : null;
+        const endDate = task.End ? new Date(task.End) : null;
+
+        // Handle "No category" case or empty category
+        const taskCategory = task.Category && task.Category.trim() !== "No category" ? task.Category : "";
+
+        return {
+          taskTitle,
+          description: task.Description || "",
+          startDateTime: startDate && !isNaN(startDate.getTime()) ? startDate : null,
+          dueDateTime: endDate && !isNaN(endDate.getTime()) ? endDate : null,
+          taskCreated: new Date(),
+          taskCategory,
+          taskCategoryId: null,
+          color: task.Color,
+          pattern: task.Pattern || "No Pattern",
+          progress: "Not Started",
+          assignedTasksUsers: [],
+          prerequisiteTasks: [],
+          dependentTasks: [],
+          allPrequisitesDone: false,
+          tiedProjectId: projectId,
+          taskCreatorId: new ObjectId(founderId),
+        };
+      });
+
+      const insertedTasks = await tasksCollection.insertMany(taskDocs);
+      const taskIds = Object.values(insertedTasks.insertedIds);
+
+      // Update project with task references
+      await projectCollection.updateOne({ _id: projectId }, { $set: { tasks: taskIds } });
+    }
+
+    // Create team for the project
+    const newTeam = { founderId: new ObjectId(founderId), editors: [], members: [], projects: [projectId] };
     const team = await teamCollection.insertOne(newTeam);
 
-    await projectCollection.updateOne(
-      { _id: projectId },
-      { $set: { team: team.insertedId } }
-    );
+    await projectCollection.updateOne({ _id: projectId }, { $set: { team: team.insertedId } });
 
     await userCollection.updateOne(
       { _id: new ObjectId(founderId) },
       { $push: { projects: projectId } }
     );
 
-    res.status(201).json({ ...newProject, _id: projectId, team: team.insertedId });
+    res.status(201).json({
+      success: true,
+      project: { ...newProject, _id: projectId, team: team.insertedId },
+      csvData: parsedCSV.length > 0 ? parsedCSV : "No CSV data provided",
+    });
 
   } catch (error) {
-
     console.error("Error creating project:", error);
-    error = "Internal server error";
-    res.status(500).json({ error });
-    
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1610,6 +1665,34 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+//----------------> Fetch the project by ID (added) <---------//
+router.get("/projects/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+      const db = client.db("ganttify");
+      const projectCollection = db.collection("projects");
+      const tasksCollection = db.collection("tasks");
+
+      // Fetch the project by its ID
+      const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+
+      if (!project) {
+          return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Fetch tasks associated with the project
+      const tasks = await tasksCollection.find({ projectId: new ObjectId(projectId) }).toArray();
+
+      // Return the project data along with tasks
+      res.status(200).json({ project, tasks });
+  } catch (error) {
+      console.error("Error fetching project:", error);
+      res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 //-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
@@ -1845,7 +1928,8 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const { name, email, phone } = req.body;
+  // const { name, email, phone } = req.body;
+  const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
     const db = client.db("ganttify");
@@ -1857,18 +1941,29 @@ router.put("/user/:userId", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    const updates = {};
+    if (name !== undefined) updates.name = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (phone !== undefined) updates.phone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (discordAccount !== undefined && discordAccount !== '') updates.discordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (pronouns !== undefined && pronouns !== '') updates.pronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    if (timezone !== undefined && timezone !== '') updates.timezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
     // Update the user with the new data
     const updateResult = await userCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $set: { name, email, phone } }
+      { $set: updates }
     );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found or no changes made." });
+    }
 
     // Fetch the updated user
     const updatedUser = await userCollection.findOne(
       { _id: new ObjectId(userId) },
       { projection: { password: 0 } }
     );
-
+    
     res.status(200).json(updatedUser);
   } catch (error) {
     console.error("Error updating user:", error);
@@ -1907,7 +2002,9 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+    let link = `http://206.81.1.248/confirm-delete/${userId}/${token}`;
+    //let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+
     let mailDetails = {
       from: process.env.USER_EMAIL,
       to: email,
@@ -2098,7 +2195,8 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
 
       // Set up this restoration link.
-      let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
+      let restoreLink = `http://206.81.1.248/restore-account/${userId}/${newToken}`;
+      //let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
       let mailDetails = {
@@ -2364,7 +2462,7 @@ router.get("/user/:userId", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
+    
     res.status(200).json(user);
   } catch (error) {
     console.error("Error finding user:", error);
