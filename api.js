@@ -1,5 +1,10 @@
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
+const LOCALHOST = `http://localhost:5173`;
+const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
+if(process.env.NODE_ENV === 'dev'){
+    console.log("Running in Dev Mode");
+}
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -199,8 +204,8 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + enterPassword.toString();
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
-    //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
-    let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
+    let link = GANTTIFY_LINK+`/verify-email/${tempIdString}/${token}`;
+    //let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
     // Use secure transporter.
     const secureTransporter = await createSecureTransporter();
@@ -389,7 +394,7 @@ router.post('/forgot-password', async (req, res) =>
       const secret = process.env.JWT_SECRET + user.password;
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
-      let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
+      let link = GANTTIFY_LINK+`/reset-password/${user._id}/${token}`;
       //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
       const secureTransporter = await createSecureTransporter();
@@ -615,8 +620,8 @@ router.post("/edit-email", async (req, res) => {
     const temp = {tempId: user._id, email: newEmail, requestedEmailChangeTime: new Date()};
     await unverifiedEmailCollection.insertOne(temp);
 
-    //let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
-    let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
+    let link = GANTTIFY_LINK+`/edit-email/${user._id.toString()}/${token}`;
+    //let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -869,7 +874,7 @@ router.post('/createtask', async (req, res) => {
     taskCategory,
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
-    dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
+    dependentTasks: [], // Stores all other task ids who are dependent on this task being done.
     allPrequisitesDone: prequisitesDone // Indicates if all of this task's prequisites are done.
   };
 
@@ -974,7 +979,7 @@ router.put("/tasks/:id", async (req, res) => {
         if (newPrecedeTasks && newPrecedeTasks.length > 0){
 
           // Debugging purposes. 
-          console.log("List of prequisite tasks to add: \n" + newPrecedeTasks); 
+          console.log(newPrecedeTasks); 
 
           // Added these new prequisites attached to this task. 
           await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: newPrecedeTasks}});
@@ -1228,7 +1233,9 @@ router.delete("/tasks/:id", async (req, res) => {
     if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(taskId)}})}
 
     // Dependent tasks for this deleted task no longer have this task as a prequisite.
-    if (task.dependentTasks && task.dependentTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})}
+    if (task.dependentTasks && task.dependentTasks.length > 0) {
+        console.log(task.dependentTasks);
+        await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})}
 
     // Deleting task in tasks collection
     const taskDeleteResult = await taskCollection.deleteOne({ _id: new ObjectId(taskId) });
@@ -1555,6 +1562,7 @@ router.put('/projects/updateProjectName/:id', async (req, res) => {
   const { id } = req.params;
   const { nameProject } = req.body;
   let error = "";
+  console.log("new project name: " + nameProject);
 
   // Validate the project ID
   if (!ObjectId.isValid(id)) {
@@ -3058,7 +3066,7 @@ router.post('/invite-user', async (req, res) => {
     const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
     const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
     
-    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
+    const link = user ? GANTTIFY_LINK+`/accept-invite/${token}` : GANTTIFY_LINK+`/register/${token}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -3173,7 +3181,7 @@ router.post("/register/:token", async (req, res) => {
     const insertedUser = await userCollection.insertOne(newUser);
     const secret = process.env.JWT_SECRET + hashedPassword;
     const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
-    let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
+    let link = GANTTIFY_LINK+`/verify-invite/${verificationToken}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
