@@ -1,5 +1,10 @@
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
+const LOCALHOST = `http://localhost:5173`;
+const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
+if(process.env.NODE_ENV === 'dev'){
+    console.log("Running in Dev Mode");
+}
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -45,59 +50,6 @@ let client;
 // For CSFLE explicit encryption.
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
 
-// Set up OAuth2 client and returns a secure transporter.
-// This is bugged for some reason, don't do this.
-// const createSecureOAuth2Transporter = async () => {
-
-//   try {
-    
-//     const oAuth2Client = new OAuth2(process.env.CLIENT_ID, process.env.CLIENT_SECRET, "https://developers.google.com/oauthplayground");
-    
-//     oAuth2Client.setCredentials({refresh_token: process.env.REFRESH_TOKEN});
-  
-//     // Get access token.
-//     const accessToken = await new Promise((resolve, reject) => {
-//       oAuth2Client.getAccessToken((err, token) => {
-//         if (err) {reject();}
-//         console.log("Access token was found.");
-//         console.log("1");
-//         resolve(token);
-//         console.log("2");
-//       });
-//       console.log("3");
-//     });
-
-//     console.log("Access token: = " + accessToken);
-
-//     const secureTransporter = nodeMailer.createTransport({
-//       service: 'gmail',
-//       host: "smtp.gmail.com",
-//       secure:true,
-//       port: 465,
-//       auth: {
-//         type: "OAuth2",
-//         user: process.env.USER_EMAIL,
-//         pass: process.env.EMAIL_PASSWORD,
-//         accessToken,
-//         clientId: process.env.CLIENT_ID,
-//         clientSecret: process.env.CLIENT_SECRET,
-//         refreshToken: process.env.REFRESH_TOKEN,
-//       }
-//     });
-    
-
-//     console.log("4");
-//     console.log("clientId = " + process.env.CLIENT_ID); 
-//     console.log("clientSecret = " + process.env.CLIENT_SECRET); 
-//     console.log("refreshToken = " + process.env.REFRESH_TOKEN); 
-//     return secureTransporter;
-    
-//   } catch (error) {
-//     console.log(error);
-//     return null;
-//   }
-// };
-
 const createSecureTransporter = async () => {
 
   try {
@@ -141,7 +93,6 @@ router.post("/register", async (req, res) => {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const tempCollection = db.collection("unverifiedUserAccounts");
-    const deletedAccountCollection = db.collection("deleted_user_accounts");
 
     // Ensure that TTL exists.
     await tempCollection.createIndex(
@@ -154,12 +105,11 @@ router.post("/register", async (req, res) => {
 
     // Make an encrypted query against both the temporary and verified databases.
     var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-	  const existingUser = await userCollection.findOne({email: queryEncryptedEmail});
-    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail});
-    const existingDeletionUser = await deletedAccountCollection.findOne({email: queryEncryptedEmail});
+	  const existingUser = await userCollection.findOne({email: queryEncryptedEmail });
+    const existingTempUser = await tempCollection.findOne({email: queryEncryptedEmail });
 
     // Check if the user already exists in the verified user account database.
-    if (existingUser || existingTempUser || existingDeletionUser) {
+    if (existingUser || existingTempUser) {
       return res.status(400).json({ error: "Email has already verified or registered." });
     }
 
@@ -201,8 +151,7 @@ router.post("/register", async (req, res) => {
     const secret = process.env.JWT_SECRET + enterPassword.toString();
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
-    //let link = `http://206.81.1.248/verify-email/${tempIdString}/${token}`;
-    let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
+    let link = GANTTIFY_LINK+`/verify-email/${tempIdString}/${token}`;
 
     // Use secure transporter.
     const secureTransporter = await createSecureTransporter();
@@ -391,8 +340,7 @@ router.post('/forgot-password', async (req, res) =>
       const secret = process.env.JWT_SECRET + user.password;
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
-      //let link = `http://206.81.1.248/reset-password/${user._id}/${token}`;
-      let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
+      let link = GANTTIFY_LINK+`/reset-password/${user._id}/${token}`;
 
       const secureTransporter = await createSecureTransporter();
       if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -505,6 +453,71 @@ router.post('/reset-password', async (req, res) =>
     } 
 });
 
+//-----------------> Edit User Profile Details Endpoint <-----------------//
+// Edits profile details that do not require second verifcation.
+router.post("/edit-user-profile-details", async (req, res) => {
+  const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
+  let error = "";
+
+  try {
+
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
+
+    if (!user){return res.status(404).send("User profile does not exist.");}
+    
+    // Debugging purposes only.
+    // console.log("Old user details:");
+    // console.log(user);
+
+    var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    
+    // Update only if necessary.
+    // upsert field ($or) determines if the update will perform.
+    // Approach taken from MongoDB documentation and here:
+    // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
+    await userCollection.updateOne(
+      {_id: new ObjectId(id), 
+        $or:
+        [
+          {name: {$ne: ["name", updateName]}},
+          {username: {$ne: ["username", updateUsername]}},
+          {phone: {$ne: ["phone", updatePhone]}},
+          {pronouns: {$ne: ["pronouns", updatePronouns]}},
+          {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
+          {organization: {$ne: ["organization", updateOrganization]}},
+          {timezone: {$ne: ["timezone", updateTimezone]}}
+        ]
+      },
+      {$set: 
+        {
+          name: updateName, 
+          username: updateUsername, 
+          phone: updatePhone, 
+          pronouns: updatePronouns,
+          discordAccount: updateDiscord,
+          organization: updateOrganization,
+          timezone: updateTimezone
+        },
+      } 
+    );
+
+    return res.status(200).send("User profile has been successfully updated.");
+    
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
 //-----------------> Edit Email Endpoint <-----------------//
 // Allows logged in users to change their email account.
 // Requires the user to know their password before proceeding.
@@ -554,8 +567,7 @@ router.post("/edit-email", async (req, res) => {
     const temp = {tempId: user._id, email: newEmail, requestedEmailChangeTime: new Date()};
     await unverifiedEmailCollection.insertOne(temp);
 
-    //let link = `http://206.81.1.248/edit-email/${user._id.toString()}/${token}`;
-    let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
+    let link = GANTTIFY_LINK+`/edit-email/${user._id.toString()}/${token}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -809,7 +821,7 @@ router.post('/createtask', async (req, res) => {
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
     dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
-    allPrequisitesDone: false // True ndicates if all of this task's prequisites are done; false if not all prequisite tasks are completed or has no prequisite tasks otherwise.
+    allPrequisitesDone: true // True ndicates if all of this task's prequisites are done or has no prequisite tasks; false if not all prequisite tasks are completed or otherwise.
   };
 
     // Insert the new task into the tasks collection
@@ -849,14 +861,14 @@ router.post('/createtask', async (req, res) => {
         {$push: {dependentTasks: taskId}}
       );
 
-      // All of this task's prequisites are done. 
       if (prerequisiteTasks.length == allCompletedPrequisites.length){
+        // All of this task's prequisites are done. 
         await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
+      } else {
+        // All of this task's prequisites are not done.
+        await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: false}});
       }
 
-    } else if (prerequisiteTasks.length == 0){
-      // If there's no prequisites, treat this task as having its prequisites done.
-      await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
     }
 
     // Respond with the newly created task details
@@ -899,55 +911,106 @@ router.put("/tasks/:id", async (req, res) => {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const taskCategoriesCollection = db.collection("task_categories");
+    const userCollection = db.collection("userAccounts");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
 
-    const test = updateFields.prerequisiteTasks.map(n => new ObjectId(n));
-    console.log("Test = " + test);
-
-    // Determine which prequisites, if any, were added or removed from the database.
-    // Since objectIds gurantee uniqueness, use sets to determine what needs to be removed or updated.
-    const addedPrequisites = test.filter(n => !task.prerequisiteTasks.includes(n));
-    const removedPrequisites = task.prerequisiteTasks.filter(n => !test.includes(n));
-
-    // Note: taskPrequisiteTasks should be an array of ObjectIds. 
-    if (addedPrequisites.length > 0 || removedPrequisites.length > 0){
-
-      if (addedPrequisites.length > 0){
-        
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: addedPrequisites.map(task => new ObjectId(task))}}});
-        await taskCollection.updateMany({_id: {$in: addedPrequisites.map(task => new ObjectId(task))}}, {$push: {dependentTasks: new ObjectId(id)}});
-
-      } else {
-        console.log("List of prequisite task ids to add: N/A");
-      }
-
-      if (removedPrequisites.length > 0){
-
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removedPrequisites.map((id) => new ObjectId(id))}});
-
-        // Update that this task is no longer a dependency to those new prequisite tasks.
-        await taskCollection.updateMany({_id: {$in: removedPrequisites.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(id)}});
-
-      } else {
-        console.log("List of prequisite task ids to remove: N/A");
-      }
-
-      // Reexamine if all of this task's prequisites are completed or not.
-      var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-      console.log("All completed prequisites:\n" + allCompletedPrequisites);
-      console.log("Number of updated completed prequisites for this task: " + allCompletedPrequisites.length + ". Out of a total of " + updateFields.prerequisiteTasks.length + " prequisite tasks."); // debugging purposes.
-      
-      if ((task.prerequisiteTasks.length == 0 || allCompletedPrequisites.length == task.prerequisiteTasks.length)){
-        // This task's prequisites are all completed, or this task no longer has any prequisites attached to it.
-        updateFields.allPrequisitesDone = true;
-      } else {
-        // Not all of this task's requisites are done.
-        updateFields.allPrequisitesDone = false;
-      }
+    // Task to update was not found.
+    if (!task){
+      error = "Task not found. Updates failed";
+      return res.status(404).json({ error });
     }
 
+    // Determine which prequisites, if any, were added or removed from the database.
+    if (updateFields.prerequisiteTasks) {
+
+      // Needed to properly update tasks with object ids
+      if (updateFields.prerequisiteTasks) {
+        updateFields.prerequisiteTasks = updateFields.prerequisiteTasks.map(id => new ObjectId(id));
+      }
+
+      var incomingPrequisiteStrings = updateFields.prerequisiteTasks.map(n => n.toString());
+      var databasePrequisiteStrings = task.prerequisiteTasks.map(n => n.toString());
+
+      console.log("Incoming update:\n");
+      console.log(incomingPrequisiteStrings);
+      console.log("In the database currently:\n");
+      console.log(databasePrequisiteStrings);
+      
+      // Calculate shared prequisites for the database and updated list of prequisites.
+      const samePrequisites = incomingPrequisiteStrings.filter(n => databasePrequisiteStrings.includes(n));
+      console.log("Shared prequisites currently:\n");
+      console.log(samePrequisites);
+
+      // Remove shared items between lists.
+      const removeCommonIncoming = incomingPrequisiteStrings.filter(n => !samePrequisites.includes(n));
+      const removeCommonDatabase = databasePrequisiteStrings.filter(n => !samePrequisites.includes(n));
+      
+      // Calculate the added and removed prequisites for this task.
+      const addedPrequisites = removeCommonIncoming.filter(n => !removeCommonDatabase.includes(n));
+      const removedPrequisites = removeCommonDatabase.filter(n => !removeCommonIncoming.includes(n));
+
+      // Determine the updated list.
+      const updatePrequisiteList = samePrequisites.concat(addedPrequisites);
+
+      // Note: taskPrequisiteTasks should be an array of ObjectIds. 
+      if (addedPrequisites.length > 0 || removedPrequisites.length > 0){
+
+        if (addedPrequisites.length > 0){
+          console.log("Adding the following prequisites to this task:\n");
+          console.log(addedPrequisites);
+
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: addedPrequisites.map(n => new ObjectId(n))}}});
+          await taskCollection.updateMany({_id: {$in: addedPrequisites.map(n => new ObjectId(n))}}, {$addToSet: {dependentTasks: new ObjectId(id)}});
+
+        } else {
+          console.log("List of prequisite task ids to add: N/A");
+        }
+
+        if (removedPrequisites.length > 0){
+          console.log("Removing the following prequisites to this task:\n");
+          console.log(removedPrequisites);
+
+          // Remove all selected prequisites from this task.
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removedPrequisites.map(n => new ObjectId(n))}});
+          
+          // Update that this task is no longer a dependency to those new prequisite tasks.
+          await taskCollection.updateMany({_id: {$in: removedPrequisites.map(n => new ObjectId(n))}}, {$pull: {dependentTasks: new ObjectId(id)}});
+
+        } else {
+          console.log("List of prequisite task ids to remove: N/A");
+        }
+
+        // Reexamine if all of this task's prequisites are completed or not.
+        // Use the array.
+        var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: updatePrequisiteList.map(n => new ObjectId(n))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        console.log("All completed prequisites:\n" + allCompletedPrequisites);
+
+        if ((updatePrequisiteList.length == 0 || allCompletedPrequisites.length == updatePrequisiteList.length)){
+          // This task's prequisites are all completed, or this task no longer has any prequisites attached to it.
+          updateFields.allPrequisitesDone = true;
+
+        } else {
+
+          // Not all of this task's requisites are done.
+          updateFields.allPrequisitesDone = false;
+
+          // This task can not be completed - it is only in-progress.
+          // Update the status of this task in the database.
+          if (task.progress === "Completed"){
+            console.log("Changing task from completed to in-progress due to not of its prequisites being completed.");
+            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: "In-progress"}});
+          }
+        }
+      }
+    }
+    
     // If this task's completion status has changed, evaluate the task's dependencies.
     if (updateFields.progress && updateFields.progress !== task.progress){
+
+      // Convert all dependent tasks into ObjectIds from the updateField.
+      if (updateFields.dependentTasks) {
+        updateFields.dependentTasks = updateFields.dependentTasks.map(id => new ObjectId(id));
+      }
 
       // Ensure that the progress status of this task is updated before proceeding.
       // If this task happens to be the one that fulfills the dependency's prequisities...
@@ -955,7 +1018,7 @@ router.put("/tasks/:id", async (req, res) => {
 
       // Find all dependencies of this task. 
       var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
-
+      console.log("All Dependencies ", allDependencies);
       for (const dependTasks of allDependencies) {
         
         // Check each dependent task's prequisities.
@@ -964,14 +1027,14 @@ router.put("/tasks/:id", async (req, res) => {
         // If this task caused those tasks status to change...
         if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
           
-          console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
+          console.log("Dependency \"" + dependTasks.taskTitle +  "\" of task \"" + task.taskTitle + "\" has all of its prequisities completed.");
           
           // Update the status of this dependency.
           await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
 
         } else {
 
-          console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
+          console.log("Dependency \"" + dependTasks.taskTitle +  "\" of task \"" + task.taskTitle + "\" prequisities no longer has all of its prequisites completed.");
           
           // Update the status of this dependency.
           await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
@@ -982,9 +1045,38 @@ router.put("/tasks/:id", async (req, res) => {
 
     // Convert any provided ObjectId fields
     if (updateFields.assignedTasksUsers) {
+      
       updateFields.assignedTasksUsers = updateFields.assignedTasksUsers.map(
         (id) => new ObjectId(id)
       );
+
+      var incomingAssignStrings = updateFields.assignedTasksUsers.map(n => n.toString());
+      var databaseAssignStrings = task.assignedTasksUsers.map(n => n.toString());
+
+      // Check if we need to add or remove assigned team members for the assigned to-do list.
+      // Calculate shared prequisites for the database and updated list of prequisites.
+      const sameAssignedUsers = incomingAssignStrings.filter(n => databaseAssignStrings.includes(n));
+
+      // Remove shared items between lists.
+      const removeCommonIncoming = incomingAssignStrings.filter(n => !sameAssignedUsers.includes(n));
+      const removeCommonDatabase = databaseAssignStrings.filter(n => !sameAssignedUsers.includes(n));
+      
+      // Calculate the added and removed team members for this task.
+      const addedAssigned = removeCommonIncoming.filter(n => !removeCommonDatabase.includes(n));
+      const removedAssigned = removeCommonDatabase.filter(n => !removeCommonIncoming.includes(n));
+
+      // Add this task as a item on their to-do list.
+      await userCollection.updateMany(
+        { _id: { $in: addedAssigned.map((id) => new ObjectId(id)) } },
+        { $push: {toDoList: new ObjectId(id)}}
+      );
+
+      // Then remove this task as an item on their to-do list.
+      await userCollection.updateMany(
+        { _id: { $in: removedAssigned.map((id) => new ObjectId(id)) } },
+        { $pull: {toDoList: new ObjectId(id)}}
+      );
+
     }
 
     // Update the tied project id if necessary.
@@ -1023,29 +1115,22 @@ router.put("/tasks/:id", async (req, res) => {
         };
 
         const result = await taskCategoriesCollection.insertOne(newCategory);
-        category = result.ops[0];  // Retrieve the newly inserted category
+        category = result.ops[0];  // Retrieve the newly inserted category.
+
       }
 
       // Update the task with the category ID
       updateFields.taskCategoryId = new ObjectId(category._id);
     }
 
-    // Update the task itself
-    const result = await taskCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: updateFields }
-    );
+    // Update the task itself.
+    await taskCollection.updateOne({ _id: new ObjectId(id)}, {$set: updateFields});
+    return res.status(200).json({message: "Task updated successfully"});
 
-    if (result.modifiedCount === 0) {
-      error = "Task not found or no changes made";
-      return res.status(404).json({ error });
-    }
-
-    res.status(200).json({ message: "Task updated successfully" });
   } catch (error) {
     console.error("Error updating task:", error);
     error = "Internal server error";
-    res.status(500).json({ error });
+    return res.status(500).json({ error });
   }
 });
 
@@ -1148,36 +1233,25 @@ router.delete("/tasks/:id", async (req, res) => {
   const { projectId: projectId } = req.body;
   let error = "";
 
-  console.log("Deleting task: " + taskId + "in project: " +  projectId);
-
+  console.log(taskId, projectId)
   try {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const projectsCollection = db.collection("projects");
-    const userCollection = db.collection("userAccounts");
     const teamCollection = db.collection("teams");
+    const userCollection = db.collection("userAccounts");
     const task = await taskCollection.findOne({_id: new ObjectId(taskId)});
-
-    if (!task){
-      return res.status(404).send("Task does not exist");
-    }
     
-    // Prequisite tasks for this deleted task no longer have this task as a dependency.
+    // Remove all prequisites attached to this task.
     if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {
-      console.log("List of task prequisites to handle:\n" + task.prerequisiteTasks);
-      console.log("Removing this task as it prequisite's dependency: " + taskId);
-      await taskCollection.updateMany(
-      {_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, 
-      {$pull: {dependentTasks: new ObjectId(taskId)}});
+      console.log("Removing these task(s) as a dependency for each task's prequisites.\n");
+      console.log(task.prerequisiteTasks);
+      await taskCollection.updateMany({_id: {$in: task.dependentTasks}}, {$pull: {dependentTasks: new ObjectId(taskId)}})
     }
 
     // Dependent tasks for this deleted task no longer have this task as a prequisite.
     if (task.dependentTasks && task.dependentTasks.length > 0) {
-
-      console.log("List of task dependencies to handle:\n" + task.dependentTasks);
-
-      // Remove this task as a prequisite to those tasks.
-      await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}});
+      console.log("Removing these task(s) as a dependency for tasks that have this task as a prequisite.");
 
       // Find all dependencies of this task. 
       var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
@@ -1185,9 +1259,13 @@ router.delete("/tasks/:id", async (req, res) => {
       // Determine if removing this task consequentially caused its dependent tasks to remove a prequisite,
       // and potentially now having its prequisite tasks completed. 
       for (const dependTasks of allDependencies) {
-        
+        console.log("Dependent task of this task:" + dependTasks);
+
+        // Remove this task as a prequisite to this task.
+        await taskCollection.updateOne({_id: dependTasks._id}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}});
+
         // Check each dependent task's prequisities.
-        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
         
         // If this task caused those tasks status to change...
         if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
@@ -1214,7 +1292,6 @@ router.delete("/tasks/:id", async (req, res) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
-    // Remove task from the task project.
     const projectUpdateResult = await projectsCollection.updateOne(
       { 
         _id: new ObjectId(projectId),
@@ -1230,7 +1307,8 @@ router.delete("/tasks/:id", async (req, res) => {
     if (projectUpdateResult.modifiedCount === 0) {
       return res.status(404).json({ message: "Task not found in project" });
     }
-
+        
+    // Remove this task from all to-do lists.
     // Find the tied project this task is under.
     const project = await projectsCollection.findOne({_id: task.tiedProjectId});
 
@@ -1246,9 +1324,10 @@ router.delete("/tasks/:id", async (req, res) => {
       {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
       {$pull: {toDoList: new ObjectId(taskId)}}
     );
-    
-    res.status(200).json({message: "Task deleted successfully from both task and project collections."});
-    
+
+    res.status(200).json({ message: "Task deleted successfully from both task and project collections." });
+
+
   } catch (error) {
     console.error("Error deleting task:", error);
     error = "Internal server error";
@@ -1373,7 +1452,7 @@ router.post("/assigntaskstoproject", async (req, res) => {
 // Project CRUD Operations
 //-----------------> Create a project / Import a project <-----------------//
 router.post("/createproject", async (req, res) => {
-  const { nameProject, isVisible = 1, founderId, csvData } = req.body;
+  const { nameProject, isVisible = 1, founderId, flagDeletion = 0, csvData } = req.body;
   let error = "";
 
   if (!nameProject || !founderId) {
@@ -1416,9 +1495,10 @@ router.post("/createproject", async (req, res) => {
       tasks: [],
       isVisible,
       founderId: new ObjectId(founderId),
+      flagDeletion,
     };
 
-    // Insert project.
+    // Insert project
     const project = await projectCollection.insertOne(newProject);
     const projectId = project.insertedId;
 
@@ -1444,6 +1524,7 @@ router.post("/createproject", async (req, res) => {
           taskCategoryId: null,
           color: task.Color,
           pattern: task.Pattern || "No Pattern",
+          patternColor: task.patternColor,
           progress: "Not Started",
           assignedTasksUsers: [],
           prerequisiteTasks: [],
@@ -1687,13 +1768,12 @@ Date.prototype.addDays = function(days) {
     return date;
 }
 
-//-----------------> Delete a project <-----------------//
+// Delete a project
 router.delete("/projects/:id", async (req, res) => {
   const { id } = req.params;
   let error = "";
 
   try {
-
     const db = client.db("ganttify");
     const projectCollection = db.collection("projects");
     const taskCollection = db.collection("tasks");
@@ -1701,13 +1781,17 @@ router.delete("/projects/:id", async (req, res) => {
     const deletedProjectsCollection = db.collection("recently_deleted_projects");
     const deletedTasksCollection = db.collection("recently_deleted_tasks");
     const deletedTeamsCollection = db.collection("recently_deleted_teams");
-    const userCollection = db.collection('userAccounts');
+    const results = db.collection('userAccounts');
+    const projectEmail = await projectCollection.findOne({ _id: new ObjectId(id) });
+    const user = await results.findOne({_id: projectEmail.founderId});
+
+    const email = user.email;
 
     // Ensure TTL index exists
     await deletedProjectsCollection.createIndex(
       { "dateMoved": 1 },
       {
-        expireAfterSeconds: 2592000, // equivalent to 30 days.
+        expireAfterSeconds: 2592000,
       }
     );
 
@@ -1725,21 +1809,14 @@ router.delete("/projects/:id", async (req, res) => {
       }
     );
 
-    // Find the project.
+    // Find the project to delete
     const project = await projectCollection.findOne({ _id: new ObjectId(id) });
+    console.log("Project data:", project); // Debugging line
 
     if (!project) {
       error = "Project not found";
       return res.status(404).json({ error });
     }
-
-    // Find all members of this project.
-    const projectTeam = await teamCollection.findOne({_id: project.team});
-    console.log("Project data to delete:", project); // Debugging line.
-
-    // For each person tied to this project, remove this project and tasks from their project arrays and to-do lists.
-    var founderOnProject = [projectTeam.founderId];
-    const allUsersOnProject = founderOnProject.concat(projectTeam.editors, projectTeam.members);
 
     // Add necessary field for tracking account deletion date.
     project.dateMoved = new Date();
@@ -1759,19 +1836,10 @@ router.delete("/projects/:id", async (req, res) => {
           ...task,
           dateMoved: new Date(),
         }));
-        
         await deletedTasksCollection.insertMany(tasksToMove);
         console.log("Tasks moved to deleted_tasks"); // Debugging line
-        
         // Delete the associated tasks from the main collection
         await taskCollection.deleteMany({ _id: { $in: taskIds } });
-
-        // Remove these tasks from the to-do lists of each user on this project.
-        await userCollection.updateMany(
-          {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
-          {$pull: {toDoList: {$in: taskIds}}}
-        );
-      
       } else {
         console.log("No tasks found for the project"); // Debugging line
       }
@@ -1803,16 +1871,28 @@ router.delete("/projects/:id", async (req, res) => {
     }
 
     // Delete the project from the main collection
-    await projectCollection.deleteOne({_id: new ObjectId(id)});
+    await projectCollection.deleteOne({ _id: new ObjectId(id) });
 
-    // Remove this project from the project list of the founder of this project.
-    await userCollection.updateOne(
-      {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
-      {$pull: {projects: new ObjectId(id)}}
-    );
+    const secureTransporter = await createSecureTransporter();
+    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    res.status(200).json({ message: "Project and associated data moved to recently deleted collections successfully" });
+    // Send an email notification
+    let mailDetails = {
+      from: process.env.USER_EMAIL,
+      to: email, 
+      subject: "Project Moved to Recently Deleted",
+      text: `Hello,\n\nYour project "${project.nameProject}" has been moved to the Recently Deleted Projects collection. It will remain there for 30 days before permanent deletion.\n\nBest regards,\nThe Ganttify Team`,
+    };
 
+    secureTransporter.sendMail(mailDetails, (err, info) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error sending email' });
+      } else {
+        return res.status(200).json({ message: 'Project and associated data moved to deleted collections successfully' });
+      }
+    });
+
+    //res.status(200).json({ message: "Project and associated data moved to deleted collections successfully" });
   } catch (error) {
     console.error("Error deleting project:", error);
     error = "Internal server error";
@@ -1820,67 +1900,57 @@ router.delete("/projects/:id", async (req, res) => {
   }
 });
 
-// Restore a project
-router.post("/restore-project/:id", async (req, res) => {
+// Wipe a project
+router.delete("/wipeproject/:id", async (req, res) => {
   const { id } = req.params;
   let error = "";
 
   try {
     const db = client.db("ganttify");
-    const projectCollection = db.collection("projects");
-    const taskCollection = db.collection("tasks");
-    const teamCollection = db.collection("teams");
     const deletedProjectsCollection = db.collection("recently_deleted_projects");
     const deletedTasksCollection = db.collection("recently_deleted_tasks");
     const deletedTeamsCollection = db.collection("recently_deleted_teams");
-    const userCollection = db.collection('userAccounts');
+    const deleteAll = db.collection("VOID");
 
-    // Find the project to restore
-    const project = await deletedProjectsCollection.findOne({_id: new ObjectId(id)});
+    // Ensure TTL index exists
+    await deleteAll.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 0,
+      }
+    );
+
+    // Find the project to delete
+    const project = await deletedProjectsCollection.findOne({ _id: new ObjectId(id) });
+    console.log("Project data:", project); // Debugging line
 
     if (!project) {
       error = "Project not found";
       return res.status(404).json({ error });
     }
 
-    console.log("Project data to restore:", project); // Debugging line
+    // Add necessary field to track account deletion date.
+    project.dateMoved = new Date();
 
-    // Remove obsolete field.
-    delete project.dateMoved;
-
-    // Find all members of this project.
-    const projectTeam = await deletedTeamsCollection.findOne({_id: project.team});
-
-    // For each person tied to this project, remove this project and tasks from their project arrays and to-do lists.
-    var founderOnProject = [projectTeam.founderId];
-    const allUsersOnProject = founderOnProject.concat(projectTeam.editors, projectTeam.members);
-
-    // Insert the project into the deleted_projects collection
-    await projectCollection.insertOne(project);
+    // Insert the project into the VOID collection.
+    await deleteAll.insertOne(project);
 
     // Handle associated tasks
     if (project.tasks && project.tasks.length > 0) {
       const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
-      console.log("Task IDs to restore:", taskIds); // Debugging line
-      const tasks = await deletedTasksCollection.find({_id: {$in: taskIds}}).toArray();
+      console.log("Task IDs to move:", taskIds); // Debugging line
+      const tasks = await deletedTasksCollection.find({ _id: { $in: taskIds } }).toArray();
       console.log("Tasks found:", tasks); // Debugging line
       if (tasks.length > 0) {
         // Set dateMoved and metadata for tasks
         const tasksToMove = tasks.map(task => ({
           ...task,
+          dateMoved: new Date(),
         }));
-        await taskCollection.insertMany(tasksToMove);
-        console.log("Tasks moved to tasks"); // Debugging line
-
-        // Delete the associated tasks from the recently deleted collection
-        await deletedTasksCollection.deleteMany({_id: {$in: taskIds}});
-
-        // Add these tasks from the to-do lists of each user on this project.
-        await userCollection.updateMany(
-          {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
-          {$push: {toDoList: {$each: taskIds}}}
-        );
-
+        await deleteAll.insertMany(tasksToMove);
+        console.log("Tasks moved to deleted_tasks"); // Debugging line
+        // Delete the associated tasks from the main collection.
+        await deletedTasksCollection.deleteMany({ _id: { $in: taskIds } });
       } else {
         console.log("No tasks found for the project"); // Debugging line
       }
@@ -1898,9 +1968,10 @@ router.post("/restore-project/:id", async (req, res) => {
         // Set dateMoved and metadata for the team
         const teamToMove = {
           ...team,
+          dateMoved: new Date(),
         };
-        await teamCollection.insertOne(teamToMove);
-        console.log("Team moved to teams"); // Debugging line
+        await deleteAll.insertOne(teamToMove);
+        console.log("Team moved to deleted_teams"); // Debugging line
         // Delete the associated team from the main collection
         await deletedTeamsCollection.deleteOne({ _id: teamId });
       } else {
@@ -1913,81 +1984,6 @@ router.post("/restore-project/:id", async (req, res) => {
     // Delete the project from the main collection
     await deletedProjectsCollection.deleteOne({ _id: new ObjectId(id) });
 
-    // Add this project from the project list of the founder of this project.
-    await userCollection.updateOne(
-      {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
-      {$push: {projects: new ObjectId(id)}}
-    );
-
-    res.status(200).json({ message: "Project and associated data restored to collections successfully" });
-  } catch (error) {
-    console.error("Error restoring project:", error);
-    error = "Internal server error";
-    res.status(500).json({ error });
-  }
-
-});
-
-// Wipe a project
-router.delete("/wipeproject/:id", async (req, res) => {
-  const { id } = req.params;
-  let error = "";
-
-  try {
-
-    const db = client.db("ganttify");
-    const deletedProjectsCollection = db.collection("recently_deleted_projects");
-    const deletedTasksCollection = db.collection("recently_deleted_tasks");
-    const deletedTeamsCollection = db.collection("recently_deleted_teams");
-
-    // Find the project to delete
-    const project = await deletedProjectsCollection.findOne({ _id: new ObjectId(id) });
-    console.log("Project data to wipe permanently:\n", project); // Debugging line
-
-    if (!project) {
-      error = "Project not found";
-      return res.status(404).json({ error });
-    }
-
-    // Handle associated tasks
-    if (project.tasks && project.tasks.length > 0) {
-      const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
-      console.log("Task IDs to wipe permanently:\n", taskIds); // Debugging line
-      const tasks = await deletedTasksCollection.find({ _id: { $in: taskIds } }).toArray();
-      console.log("Tasks found:", tasks); // Debugging line
-      if (tasks.length > 0) {
-
-        // Delete the associated tasks from the main collection.
-        await deletedTasksCollection.deleteMany({ _id: { $in: taskIds } });
-
-      } else {
-        console.log("No tasks found for the project"); // Debugging line
-      }
-    } else {
-      console.log("No tasks assigned to the project"); // Debugging line
-    }
-
-    // Handle associated team.
-    if (project.team) {
-      const teamId = new ObjectId(project.team);
-      console.log("Team ID to wipe permanently:\n", teamId); // Debugging line
-      const team = await deletedTeamsCollection.findOne({ _id: teamId });
-      console.log("Team found:", team); // Debugging line
-      if (team) {
-
-        // Delete the associated team from the main collection
-        await deletedTeamsCollection.deleteOne({ _id: teamId });
-
-      } else {
-        console.log("Team not found for the project"); // Debugging line
-      }
-    } else {
-      console.log("No team assigned to the project"); // Debugging line
-    }
-
-    // Delete the project from the main collection.
-    await deletedProjectsCollection.deleteOne({_id: new ObjectId(id)});
-
     res.status(200).json({ message: "Project and associated data have been wiped successfully" });
   } catch (error) {
     console.error("Error wiping project:", error);
@@ -1999,6 +1995,7 @@ router.delete("/wipeproject/:id", async (req, res) => {
 // -----------------> Update a specific user <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
+  // const { name, email, phone } = req.body;
   const { name, phone, discordAccount, pronouns, timezone } = req.body;
 
   try {
@@ -2077,7 +2074,8 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
-    let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
+    let link = GANTTIFY_LINK+`/confirm-delete/${userId}/${token}`;
+
     let mailDetails = {
       from: process.env.USER_EMAIL,
       to: email,
@@ -2268,8 +2266,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       const newToken = jwt.sign({ email: email }, newSecret, { expiresIn: "72h" }); // Token valid for 72 hours.
 
       // Set up this restoration link.
-      //let restoreLink = `http://206.81.1.248/restore-account/${userId}/${newToken}`;
-      let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
+      let restoreLink = GANTTIFY_LINK+`/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
       let mailDetails = {
@@ -2300,7 +2297,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
 });
 
-// Account Restoration
+// Endpoint to restore the account via clicking on the email link.
 router.post("/user/restore-account/:userId/:token", async (req, res) => {
   const { userId, token } = req.params;
 
@@ -2314,6 +2311,35 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
     const deletedAccountProjectsCollection = db.collection("deleted_account_projects");
     const deletedAccountTasksCollection = db.collection("deleted_account_tasks");
     const deletedAccountTeamsCollection = db.collection("deleted_acount_teams");
+    
+    // Ensure that TTL exists.
+    await deletedAccountCollection.createIndex(
+      { "accountDeleted": 1 },
+      {
+        expireAfterSeconds: 259200, // expires in 72 hours.
+      }
+    );
+
+    await deletedAccountProjectsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000, // expires in 72 hours.
+      }
+    );
+
+    await deletedAccountTasksCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
+
+    await deletedAccountTeamsCollection.createIndex(
+      { "dateMoved": 1 },
+      {
+        expireAfterSeconds: 2592000,
+      }
+    );
 
     // Find the user. Ensure that the user does not attempt to use this endpoint when the user account already exists.
     const exist = await userCollection.findOne({_id: new ObjectId(userId) });
@@ -2796,6 +2822,91 @@ router.get('/teams/:teamId/teaminfo', async (req, res) => {
   }
 });
 
+// Restore a project
+router.post("/restore-project/:id", async (req, res) => {
+  const { id } = req.params;
+  let error = "";
+
+  try {
+    const db = client.db("ganttify");
+    const projectCollection = db.collection("projects");
+    const taskCollection = db.collection("tasks");
+    const teamCollection = db.collection("teams");
+    const deletedProjectsCollection = db.collection("recently_deleted_projects");
+    const deletedTasksCollection = db.collection("recently_deleted_tasks");
+    const deletedTeamsCollection = db.collection("recently_deleted_teams");
+
+    // Find the project to restore
+    const project = await deletedProjectsCollection.findOne({ _id: new ObjectId(id) });
+    console.log("Project data:", project); // Debugging line
+
+    if (!project) {
+      error = "Project not found";
+      return res.status(404).json({ error });
+    }
+
+    // Remove obsolete field.
+    delete project.dateMoved;
+
+    // Insert the project into the deleted_projects collection
+    await projectCollection.insertOne(project);
+
+    // Handle associated tasks
+    if (project.tasks && project.tasks.length > 0) {
+      const taskIds = project.tasks.map(taskId => new ObjectId(taskId));
+      console.log("Task IDs to move:", taskIds); // Debugging line
+      const tasks = await deletedTasksCollection.find({ _id: { $in: taskIds } }).toArray();
+      console.log("Tasks found:", tasks); // Debugging line
+      if (tasks.length > 0) {
+        // Set dateMoved and metadata for tasks
+        const tasksToMove = tasks.map(task => ({
+          ...task,
+        }));
+        await taskCollection.insertMany(tasksToMove);
+        console.log("Tasks moved to deleted_tasks"); // Debugging line
+        // Delete the associated tasks from the main collection
+        await deletedTasksCollection.deleteMany({ _id: { $in: taskIds } });
+      } else {
+        console.log("No tasks found for the project"); // Debugging line
+      }
+    } else {
+      console.log("No tasks assigned to the project"); // Debugging line
+    }
+
+    // Handle associated team
+    if (project.team) {
+      const teamId = new ObjectId(project.team);
+      console.log("Team ID to move:", teamId); // Debugging line
+      const team = await deletedTeamsCollection.findOne({ _id: teamId });
+      console.log("Team found:", team); // Debugging line
+      if (team) {
+        // Set dateMoved and metadata for the team
+        const teamToMove = {
+          ...team,
+        };
+        await teamCollection.insertOne(teamToMove);
+        console.log("Team moved to deleted_teams"); // Debugging line
+        // Delete the associated team from the main collection
+        await deletedTeamsCollection.deleteOne({ _id: teamId });
+      } else {
+        console.log("Team not found for the project"); // Debugging line
+      }
+    } else {
+      console.log("No team assigned to the project"); // Debugging line
+    }
+
+    // Delete the project from the main collection
+    await deletedProjectsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    res.status(200).json({ message: "Project and associated data restored to collections successfully" });
+  } catch (error) {
+    console.error("Error restoring project:", error);
+    error = "Internal server error";
+    res.status(500).json({ error });
+  }
+
+});
+
 // Add members to a team
 router.put('/teams/:teamId/members', async (req, res) => {
   const { teamId } = req.params;
@@ -3036,6 +3147,7 @@ router.post("/search/tasks/project", async (req, res) => {
   }
 });
 
+// <------------- Update To-Do List of a task --------------->
 router.post("/updateSingleUserToDoList", async (req, res) => {
   const { taskId, userId, isChecked } = req.body;
   let error = "";
@@ -3046,6 +3158,8 @@ router.post("/updateSingleUserToDoList", async (req, res) => {
   }
 
   try {
+
+    // Update the to-do list of each user.
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     await userCollection.updateOne({ _id: new ObjectId(userId) }, isChecked ? { $addToSet: { toDoList: new ObjectId(taskId) } } : { $pull: { toDoList: new ObjectId(taskId) } });
@@ -3118,12 +3232,12 @@ router.post('/invite-user', async (req, res) => {
   try {
     const db = client.db('ganttify');
     const userAccounts = db.collection('userAccounts');
-    const user = await userAccounts.findOne({ email });
-
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({queryEncryptedEmail});
     const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
     const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
     
-    // const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
+    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -3163,7 +3277,8 @@ router.get('/accept-invite/:token', async (req, res) => {
     const userAccounts = db.collection('userAccounts');
     const projectCollection = db.collection('projects');
     const teamCollection = db.collection('teams');
-    const user = await userAccounts.findOne({ email });
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({queryEncryptedEmail});
 
     if (user) {
       const secret = process.env.JWT_SECRET + user.password;
@@ -3186,7 +3301,7 @@ router.get('/accept-invite/:token', async (req, res) => {
           { _id: new ObjectId(project.team) },
           { $addToSet: { members: user._id } }
         );
-        res.status(200).send("User has been successfully added to a project.");
+        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
       } catch (error) {
         console.error('Invalid or expired token:', error);
         res.status(400).send('Invalid or expired token');
