@@ -455,68 +455,68 @@ router.post('/reset-password', async (req, res) =>
 
 //-----------------> Edit User Profile Details Endpoint <-----------------//
 // Edits profile details that do not require second verifcation.
-router.post("/edit-user-profile-details", async (req, res) => {
-  const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
-  let error = "";
+// router.post("/edit-user-profile-details", async (req, res) => {
+//   const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
+//   let error = "";
 
-  try {
+//   try {
 
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
+//     const db = client.db("ganttify");
+//     const userCollection = db.collection("userAccounts");
+//     const user = await userCollection.findOne({_id: new ObjectId(id)});
 
-    if (!user){return res.status(404).send("User profile does not exist.");}
+//     if (!user){return res.status(404).send("User profile does not exist.");}
     
-    // Debugging purposes only.
-    // console.log("Old user details:");
-    // console.log(user);
+//     // Debugging purposes only.
+//     // console.log("Old user details:");
+//     // console.log(user);
 
-    var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     
-    // Update only if necessary.
-    // upsert field ($or) determines if the update will perform.
-    // Approach taken from MongoDB documentation and here:
-    // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
-    await userCollection.updateOne(
-      {_id: new ObjectId(id), 
-        $or:
-        [
-          {name: {$ne: ["name", updateName]}},
-          {username: {$ne: ["username", updateUsername]}},
-          {phone: {$ne: ["phone", updatePhone]}},
-          {pronouns: {$ne: ["pronouns", updatePronouns]}},
-          {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
-          {organization: {$ne: ["organization", updateOrganization]}},
-          {timezone: {$ne: ["timezone", updateTimezone]}}
-        ]
-      },
-      {$set: 
-        {
-          name: updateName, 
-          username: updateUsername, 
-          phone: updatePhone, 
-          pronouns: updatePronouns,
-          discordAccount: updateDiscord,
-          organization: updateOrganization,
-          timezone: updateTimezone
-        },
-      } 
-    );
+//     // Update only if necessary.
+//     // upsert field ($or) determines if the update will perform.
+//     // Approach taken from MongoDB documentation and here:
+//     // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
+//     await userCollection.updateOne(
+//       {_id: new ObjectId(id), 
+//         $or:
+//         [
+//           {name: {$ne: ["name", updateName]}},
+//           {username: {$ne: ["username", updateUsername]}},
+//           {phone: {$ne: ["phone", updatePhone]}},
+//           {pronouns: {$ne: ["pronouns", updatePronouns]}},
+//           {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
+//           {organization: {$ne: ["organization", updateOrganization]}},
+//           {timezone: {$ne: ["timezone", updateTimezone]}}
+//         ]
+//       },
+//       {$set: 
+//         {
+//           name: updateName, 
+//           username: updateUsername, 
+//           phone: updatePhone, 
+//           pronouns: updatePronouns,
+//           discordAccount: updateDiscord,
+//           organization: updateOrganization,
+//           timezone: updateTimezone
+//         },
+//       } 
+//     );
 
-    return res.status(200).send("User profile has been successfully updated.");
+//     return res.status(200).send("User profile has been successfully updated.");
     
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+//   } catch (error) {
+//     console.error('An error has occurred:', error);
+//     return res.status(500).json({ error: 'Internal server error' });
+//   }
 
-});
+// });
 
 //-----------------> Edit Email Endpoint <-----------------//
 // Allows logged in users to change their email account.
@@ -645,99 +645,47 @@ router.get("/edit-email/:email/:token", async (req, res) => {
 
 });
 
-let userList = [];
-//-----------------> User List Endpoint <-----------------//
-router.get("/userlist", (req, res) => {
-  res.status(200).json({ users: userList });
-});
-
 //-----------Read Users Endpoint----------------//
 router.post("/read/users", async (req, res) => {
     const { users } = req.body;
     let error = "";
-    var usersInfo = [];
-
     console.log();
     
     if (!users) {
       error = "User ids are required";
       return res.status(400).json({ error });
     }
+
+    // Convert to objectIds.
+    const userIds = users.map(n => new ObjectId(n));
+    console.log("userIds = " + userIds);
   
     try {
-      for(let i = 0;i<users.length;i++){
 
-        const db = client.db("ganttify");
-        const results = db.collection("userAccounts");
+      const db = client.db("ganttify");
+      const userCollection = db.collection("userAccounts");
 
-        // Use user ids to find the user information.
-        const user = await results.findOne({ _id:new ObjectId(users[i])});
-        usersInfo.push(user);
+      // Find all users for this task.
+      const usersInfo = await userCollection.find({_id: {$in: userIds}}, {name: 1, assignedTasks: 1, username: 1}).toArray();
+      console.log("All people in this project (including the founder):");
+      console.log(usersInfo);
 
-      }
-
-      if(!userList){
+      if (!usersInfo){
         error = "no users found";
-        res.status(400).json({error});
+        return res.status(400).json({error});
+      } else {
+        return res.status(200).json({usersInfo, error});
       }
-      else{
-        res.status(200).json({usersInfo,error});
-      }
-        
     }
     catch (error) {
       console.error("Login error:", error);
       error = "Internal server error";
-      res.status(500).json({ error });
+      return res.status(500).json({error});
     }
   });
 
 // TASK CRUD Operations
 //-----------------> Create Task Endpoint <-----------------//
-
-// Expression to validate hex color
-// const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
-
-// List of valid patterns
-// Replaced the valid file as pngs instead of svgs.
-// const allowedPatterns = {
-//   hollow_shape_family: [
-//     // "Hollow_Mac_Noodle_Density_1.svg", // Removed
-//     "Hollow_Single_Circle_Density_1.png",
-//     "Hollow_Single_Dot_Density_1.png",
-//     "Hollow_Single_Rhombus_Density_1.png",
-//     "Hollow_Single_Square_Density_1.png",
-//     "Hollow_Single_Star_Density_1.png",
-//     "Hollow_Single_Triangle_Density_1.png",
-//   ],
-//   line_family: [
-//     "Diagonal_Left_Single_Line_Density_1.png",
-//     "Diagonal_Right_Single_Line_Density_1.png",
-//     "Diagonal_Woven_Line_Density_1.png",
-//     "Single_Horizontal_Line_Density_1.png",
-//     "Single_Vertical_Line_Density_1.png",
-//   ],
-//   solid_shape_family: [
-//     "Solid_Single_Circle_Density_1.png",
-//     "Solid_Single_Dot_Density_1.png",
-//     "Solid_Single_Rhombus_Density_1.png",
-//     "Solid_Single_Square_Density_1.png",
-//     "Solid_Single_Star_Density_1.png",
-//     "Solid_Single_Triangle_Density_1.png",
-//   ], 
-//   halftone_family: [
-//     "Halftone_Density_1.png",
-//     "Halftone_Density_2.png",
-//     "Halftone_Density_3.png",
-//   ]
-// };
-
-// Expression to validate pattern selection
-// const isValidPattern = (pattern) => {
-//   const [folder, file] = pattern.split('/');
-//   return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
-// };
-
 //------> Create Task & Added Task Category <-------//
 router.post('/createtask', async (req, res) => {
   const {
@@ -1761,14 +1709,13 @@ router.get("/projects/:projectId", async (req, res) => {
 });
 
 
-//-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
     return date;
 }
 
-// Delete a project
+//-----------------> Delete a project <-----------------//
 router.delete("/projects/:id", async (req, res) => {
   const { id } = req.params;
   let error = "";
@@ -3316,142 +3263,6 @@ router.get('/accept-invite/:token', async (req, res) => {
   }
 });
 
-// router.post("/register/:token", async (req, res) => {
-//   const { token } = req.params;
-//   const { email, name, phone, password, username } = req.body;
-
-//   if (!email || !name || !phone || !password || !username) {
-//     return res.status(400).json({ error: "All fields are required" });
-//   }
-
-//   try {
-
-//     const decodedToken = jwt.decode(token);
-//     const { projectId } = decodedToken;
-//     const db = client.db("ganttify");
-//     const userCollection = db.collection("userAccounts");
-//     const existingUser = await userCollection.findOne({ email });
-
-//     if (existingUser) {
-//       return res.status(400).json({ error: "Email already used" });
-//     }
-
-//     const hashedPassword = await bcrypt.hash(password, 10);
-//     const newUser = {
-//       email,
-//       name,
-//       phone,
-//       password: hashedPassword,
-//       username,
-//       accountCreated: new Date(),
-//       projects: [],
-//       toDoList: [],
-//       isEmailVerified: false,
-//     };
-
-//     // Insert the new user
-//     const insertedUser = await userCollection.insertOne(newUser);
-//     const secret = process.env.JWT_SECRET + hashedPassword;
-//     const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
-//     let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
-
-//     const secureTransporter = await createSecureTransporter();
-//     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
-
-//     let mailDetails = {
-//       from: process.env.USER_EMAIL,
-//       to: email,
-//       subject: 'Verify Your Ganttify Account',
-//       text: `Hello ${newUser.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-//       html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
-//     };
-
-//     secureTransporter.sendMail(mailDetails, function (err, data) {
-//       if (err) {
-//         return res.status(500).json({ error: 'Error sending verification email' });
-//       } else {
-//         return res.status(200).json({ message: 'Verification email sent' });
-//       }
-//     });
-//   } catch (error) {
-//     console.error('An error has occurred:', error);
-//     return res.status(500).json({ error });
-//   }
-// });
-
-// router.post('/decode-token', (req, res) => {
-//   const { token } = req.body;
-  
-//   if (!token) {
-//     return res.status(400).json({ error: 'Token is required' });
-//   }
-
-//   try {
-//     const decoded = jwt.decode(token);
-//     if (!decoded || !decoded.email) {
-//       return res.status(400).json({ error: 'Invalid token' });
-//     }
-
-//     res.json({ email: decoded.email });
-//   } catch (error) {
-//     console.error('Error decoding token:', error);
-//     res.status(500).json({ error: 'Failed to decode token' });
-//   }
-// });
-
-// router.get('/verify-invite/:token', async (req, res) => {
-//   const { token } = req.params;
-
-//   try {
-
-//     const decodedToken = jwt.decode(token);
-//     if (!decodedToken) {
-//       return res.status(400).send("Invalid token");
-//     }
-
-//     const { email, projectId } = decodedToken;
-//     const db = client.db("ganttify");
-//     const userCollection = db.collection("userAccounts");
-//     const projectCollection = db.collection("projects");
-//     const teamCollection = db.collection("teams");
-//     const user = await userCollection.findOne({ email });
-
-//     if (!user) {
-//       return res.status(404).send("User does not exist");
-//     }
-
-//     const secret = process.env.JWT_SECRET + user.password;
-
-//     try {
-//       jwt.verify(token, secret);
-
-//       await userCollection.updateOne(
-//         { _id: user._id },
-//         { $set: { isEmailVerified: true }, $addToSet: { projects: projectId } }
-//       );
-
-//       const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
-//       if (!project) {
-//         return res.status(404).send('Project does not exist');
-//       }
-
-//       await teamCollection.updateOne(
-//         { _id: new ObjectId(project.team) },
-//         { $addToSet: { members: user._id } }
-//       );
-
-
-//       return res.status(200).send("User verified and added to project and team");
-//     } catch (error) {
-//       console.error('Token verification failed:', error);
-//       return res.status(400).send("Invalid or expired token");
-//     }
-//   } catch (error) {
-//     console.error('Error during invitation acceptance:', error);
-//     return res.status(400).send("Invalid ID format");
-//   }
-// });
-
 router.put("/tasks/:id/dates", async (req, res) => {
   const { id } = req.params;
   const { dueDateTime, startDateTime } = req.body;
@@ -3493,11 +3304,9 @@ router.put("/tasks/:id/dates", async (req, res) => {
 router.get("/fetchTask/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    //console.log("fetching task: " + id);
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const task = await taskCollection.findOne({ _id: new ObjectId(id) });
-    //console.log("found task: " + task.taskTitle );
 	  if (!task) {return res.status(404).json({ error: "Task not found" });}
     
       res.status(200).json(task);
