@@ -2,8 +2,8 @@
 const GANTTIFY_IP = "206.81.1.248";
 const LOCALHOST = `http://localhost:5173`;
 const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
-if(process.env.NODE_ENV === 'dev'){
-    console.log("Running in Dev Mode");
+if (process.env.NODE_ENV === 'dev'){
+  console.log("Running in Dev Mode");
 }
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
@@ -14,6 +14,7 @@ const file = require("fs");
 const path = require('path');
 require("dotenv").config();
 const {google} = require("googleapis");
+const {Chromator} = require("chromator");
 const OAuth2 = google.auth.OAuth2;
 
 const router = express.Router();
@@ -230,6 +231,15 @@ router.get('/verify-email/:email/:token', async (req, res) => {
         isEmailVerified: true, 
         projects: [],
         toDoList: [],
+        uiOptions: {
+          ribbonColor: "#FDDC87",
+          dashboardSideNavBarColor: "#DC6B2C",
+          dashboardBackgroundColor: "#FFFFFF", // 
+          projectPaneBackgroundColor: "#FFFFFF", // default option
+          accentButtonColor: "#135C91", // all buttons
+          textFontStyle: "\"Inter\", sans-serif", // default option - 
+          textFontSize: "",
+        } // Object for holding UI options.
       };
 
       // Add verified user to the database and remove it from the temporary account.
@@ -267,8 +277,8 @@ router.post("/login", async (req, res) => {
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     const verifiedUser = await userCollection.findOne({ email: enterEmail });
 
-    console.log("Verified user: \n");
-    console.log(verifiedUser);
+    // console.log("Verified user: \n");
+    // console.log(verifiedUser);
     
     // If user account is not found in the verified database.
     if (!verifiedUser) {
@@ -310,6 +320,7 @@ router.post("/login", async (req, res) => {
       timezone: encryptTimezone,
       projects: verifiedUser.projects,
       toDoList: verifiedUser.toDoList,
+      uiOptions: verifiedUser.uiOptions,
       error: ""
     });
 
@@ -588,6 +599,154 @@ router.post("/edit-email", async (req, res) => {
       }
     });
 
+ 
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
+//----------- Retrieve UI Settings Users Endpoint----------------//
+router.post("/get-user-ui", async (req, res) => {
+  const {userId} = req.body;
+  let error = "";
+  
+  try {
+
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(userId)});
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    // If the fields are not found, return a default list of UI settings to prevent errors.
+    if (!user.uiOptions){
+      return res.status(201).json({
+        ribbonColor: "#FDDC87", // all instances or classnames. 
+        dashboardSideNavBarColor: "#DC6B2C",
+        dashboardBackgroundColor: "#FFFFFF",
+        projectPaneBackgroundColor: "#FFFFFF",
+        accentButtonColor: "#135C91",
+        textFontStyle: "\"Inter\", sans-serif",
+        textFontSize: "",
+      });
+    }
+
+    // Returns the user's saved ui settings as a JSON.
+    return res.status(200).json(user.uiOptions);
+
+  }
+  catch (error) {
+    console.error("Login error:", error);
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+});
+
+// <----------------- Edit UI details ----------------------------> 
+// Returns a list of ui attributes for the frontend to receive.
+router.put("/edit-user-ui/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const updateFields = req.body; // Note: updateFields must be a Object JSON.
+  let error = "";
+  
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(userId)});
+
+    // Expression to validate hex color
+    const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
+
+    // Validate that each of the updated colors are valid.
+    if (!isValidHexColor(updateFields.ribbonColor) 
+      || !isValidHexColor(updateFields.dashboardSideNavBarColor)
+      || !isValidHexColor(updateFields.dashboardBackgroundColor)
+      || !isValidHexColor(updateFields.accentButtonColor)
+      || !isValidHexColor(updateFields.projectPaneBackgroundColor)){
+      return res.status(400).send("Invalid hex code(s) provided in fields.");
+    }
+
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    if (!Object.keys(updateFields).length){
+      error = "No fields provided to update";
+      return res.status(400).json({ error });
+    }
+
+    // Determine if the chosen colors for the ribbon, buttons, and dashboard navigation bar have 
+    // enough contrast between the button text color (white) and navigation text color (black).
+    let warning = "";
+    const ribbonColor = new Chromator(updateFields.ribbonColor);
+    const dashboardNavBarColor = new Chromator(updateFields.dashboardSideNavBarColor);
+    const dashboardBackgroundColor = new Chromator(updateFields.dashboardBackgroundColor);
+    const buttonAccentColor = new Chromator(updateFields.accentButtonColor);
+    const projectPaneBackgroundColor = new Chromator(updateFields.projectPaneBackgroundColor);
+    
+    // Immutable text color.
+    const ribbonTextColor = new Chromator("#000000");
+    const buttonTextColor = new Chromator("#FFFFFF");
+
+    // Check for all custom colors if it fails WCAG 2.2 AA Contrast Standards.
+    if (ribbonColor.findContrast(ribbonTextColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and ribbon background color are insufficient.\n");
+    } 
+
+    if (ribbonColor.findContrast(projectPaneBackgroundColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and project pane background color are insufficient.\n");
+    } 
+
+    if (ribbonColor.findContrast(dashboardBackgroundColor) < 4.5){
+      console.log("ribbonColor.findContrast(dashboardBackgroundColor) = " + ribbonColor.findContrast(dashboardBackgroundColor));
+      warning = warning = warning.concat("Warning - Contrast between ribbon background color and dashboard background color are insufficient.\n");
+    }
+
+    if (dashboardNavBarColor.findContrast(dashboardBackgroundColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and dashboard background color are insufficient.\n");
+    }
+
+    if (buttonAccentColor.findContrast(buttonTextColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between button text color and button background color are insufficient.\n");
+    }
+
+    console.log("Applicable warnings: " + warning);
+    updateFields.alert = warning;
+
+    // Update UI fields in the database.
+    await userCollection.updateOne(
+      {_id: new ObjectId(userId), 
+        $or:
+        [
+          {'uiOptions.ribbonColor': {$ne: ["uiOptions.ribbonColor", updateFields.ribbonColor]}},
+          {'uiOptions.dashboardSideNavBarColor': {$ne: ["uiOptions.dashboardSideNavBarColor", updateFields.dashboardSideNavBarColor]}},
+          {'uiOptions.dashboardBackgroundColor': {$ne: ["uiOptions.dashboardBackgroundColor", updateFields.dashboardBackgroundColor]}},
+          {'uiOptions.projectPaneBackgroundColor': {$ne: ["uiOptions.projectPaneBackgroundColor", updateFields.projectPaneBackgroundColor]}},
+          {'uiOptions.accentButtonColor': {$ne: ["uiOptions.accentButtonColor", updateFields.accentButtonColor]}},
+          {'uiOptions.textFontStyle': {$ne: ["uiOptions.textFontStyle", updateFields.textFontStyle]}},
+          {'uiOptions.textFontSize': {$ne: ["uiOptions.textFontSize", updateFields.textFontSize]}}
+        ]
+      },
+      {$set: 
+        {
+          'uiOptions.ribbonColor': updateFields.ribbonColor, 
+          'uiOptions.dashboardSideNavBarColor': updateFields.dashboardSideNavBarColor, 
+          'uiOptions.dashboardBackgroundColor': updateFields.dashboardBackgroundColor, 
+          'uiOptions.projectPaneBackgroundColor': updateFields.projectPaneBackgroundColor,
+          'uiOptions.accentButtonColor': updateFields.accentButtonColor,
+          'uiOptions.textFontStyle': updateFields.textFontStyle,
+          'uiOptions.textFontSize': updateFields.textFontSize
+        },
+      } 
+    );
+
+    // Return the updated json when done with applicable warnings.
+    return res.status(200).json(updateFields);
  
   } catch (error) {
     console.error('An error has occurred:', error);
@@ -2068,21 +2227,21 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
     );
 
     await deletedAccountProjectsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTasksCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTeamsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
@@ -2121,7 +2280,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
               // Set dateMoved for tasks
               const tasksToMove = tasks.map(task => ({
                 ...task,
-                dateMoved: new Date(),
+                accountDeleted: new Date(),
               }));
               
               await deletedAccountTasksCollection.insertMany(tasksToMove);
@@ -2148,7 +2307,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
               // Set dateMoved and metadata for the team
               const teamToMove = {
                 ...team,
-                dateMoved: new Date(),
+                accountDeleted: new Date(),
               };
               
               await deletedAccountTeamsCollection.insertOne(teamToMove);
@@ -2268,21 +2427,21 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
     );
 
     await deletedAccountProjectsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000, // expires in 72 hours.
       }
     );
 
     await deletedAccountTasksCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTeamsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
