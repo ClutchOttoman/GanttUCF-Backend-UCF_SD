@@ -3,9 +3,11 @@
 const GANTTIFY_IP = "206.81.1.248";
 const LOCALHOST = `http://localhost:5173`;
 const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
-if(process.env.NODE_ENV === 'dev'){
-    console.log("Running in Dev Mode");
+
+if (process.env.NODE_ENV === 'dev'){
+  console.log("Running in Dev Mode");
 }
+
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -15,6 +17,7 @@ const file = require("fs");
 const path = require('path');
 require("dotenv").config();
 const {google} = require("googleapis");
+const {Chromator} = require("chromator");
 const OAuth2 = google.auth.OAuth2;
 
 const router = express.Router();
@@ -50,59 +53,6 @@ let client;
 
 // For CSFLE explicit encryption.
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
-
-// Set up OAuth2 client and returns a secure transporter.
-// This is bugged for some reason, don't do this.
-// const createSecureOAuth2Transporter = async () => {
-
-//   try {
-    
-//     const oAuth2Client = new OAuth2(process.env.CLIENT_ID, process.env.CLIENT_SECRET, "https://developers.google.com/oauthplayground");
-    
-//     oAuth2Client.setCredentials({refresh_token: process.env.REFRESH_TOKEN});
-  
-//     // Get access token.
-//     const accessToken = await new Promise((resolve, reject) => {
-//       oAuth2Client.getAccessToken((err, token) => {
-//         if (err) {reject();}
-//         console.log("Access token was found.");
-//         console.log("1");
-//         resolve(token);
-//         console.log("2");
-//       });
-//       console.log("3");
-//     });
-
-//     console.log("Access token: = " + accessToken);
-
-//     const secureTransporter = nodeMailer.createTransport({
-//       service: 'gmail',
-//       host: "smtp.gmail.com",
-//       secure:true,
-//       port: 465,
-//       auth: {
-//         type: "OAuth2",
-//         user: process.env.USER_EMAIL,
-//         pass: process.env.EMAIL_PASSWORD,
-//         accessToken,
-//         clientId: process.env.CLIENT_ID,
-//         clientSecret: process.env.CLIENT_SECRET,
-//         refreshToken: process.env.REFRESH_TOKEN,
-//       }
-//     });
-    
-
-//     console.log("4");
-//     console.log("clientId = " + process.env.CLIENT_ID); 
-//     console.log("clientSecret = " + process.env.CLIENT_SECRET); 
-//     console.log("refreshToken = " + process.env.REFRESH_TOKEN); 
-//     return secureTransporter;
-    
-//   } catch (error) {
-//     console.log(error);
-//     return null;
-//   }
-// };
 
 const createSecureTransporter = async () => {
 
@@ -206,7 +156,6 @@ router.post("/register", async (req, res) => {
     const token = jwt.sign({email: tempIdString}, secret, {expiresIn: "5m",} );
 
     let link = GANTTIFY_LINK+`/verify-email/${tempIdString}/${token}`;
-    //let link = `http://localhost:5173/verify-email/${tempIdString}/${token}`; // for testing API localhost purposes only.
 
     // Use secure transporter.
     const secureTransporter = await createSecureTransporter();
@@ -285,6 +234,15 @@ router.get('/verify-email/:email/:token', async (req, res) => {
         isEmailVerified: true, 
         projects: [],
         toDoList: [],
+        uiOptions: {
+          ribbonColor: "#FDDC87",
+          dashboardSideNavBarColor: "#DC6B2C",
+          dashboardBackgroundColor: "#FFFFFF", // 
+          projectPaneBackgroundColor: "#FFFFFF", // default option
+          accentButtonColor: "#135C91", // all buttons
+          textFontStyle: "\"Inter\", sans-serif", // default option - 
+          textFontSize: "",
+        } // Object for holding UI options.
       };
 
       // Add verified user to the database and remove it from the temporary account.
@@ -322,8 +280,8 @@ router.post("/login", async (req, res) => {
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     const verifiedUser = await userCollection.findOne({ email: enterEmail });
 
-    console.log("Verified user: \n");
-    console.log(verifiedUser);
+    // console.log("Verified user: \n");
+    // console.log(verifiedUser);
     
     // If user account is not found in the verified database.
     if (!verifiedUser) {
@@ -365,6 +323,7 @@ router.post("/login", async (req, res) => {
       timezone: encryptTimezone,
       projects: verifiedUser.projects,
       toDoList: verifiedUser.toDoList,
+      uiOptions: verifiedUser.uiOptions,
       error: ""
     });
 
@@ -396,7 +355,6 @@ router.post('/forgot-password', async (req, res) =>
       const token = jwt.sign({email: user.email, id: user._id}, secret, {expiresIn: "5m",} );
 
       let link = GANTTIFY_LINK+`/reset-password/${user._id}/${token}`;
-      //let link = `http://localhost:5173/reset-password/${user._id}/${token}`; // for testing API localhost purposes only.
 
       const secureTransporter = await createSecureTransporter();
       if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -511,68 +469,68 @@ router.post('/reset-password', async (req, res) =>
 
 //-----------------> Edit User Profile Details Endpoint <-----------------//
 // Edits profile details that do not require second verifcation.
-router.post("/edit-user-profile-details", async (req, res) => {
-  const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
-  let error = "";
+// router.post("/edit-user-profile-details", async (req, res) => {
+//   const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
+//   let error = "";
 
-  try {
+//   try {
 
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
+//     const db = client.db("ganttify");
+//     const userCollection = db.collection("userAccounts");
+//     const user = await userCollection.findOne({_id: new ObjectId(id)});
 
-    if (!user){return res.status(404).send("User profile does not exist.");}
+//     if (!user){return res.status(404).send("User profile does not exist.");}
     
-    // Debugging purposes only.
-    // console.log("Old user details:");
-    // console.log(user);
+//     // Debugging purposes only.
+//     // console.log("Old user details:");
+//     // console.log(user);
 
-    var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+//     var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     
-    // Update only if necessary.
-    // upsert field ($or) determines if the update will perform.
-    // Approach taken from MongoDB documentation and here:
-    // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
-    await userCollection.updateOne(
-      {_id: new ObjectId(id), 
-        $or:
-        [
-          {name: {$ne: ["name", updateName]}},
-          {username: {$ne: ["username", updateUsername]}},
-          {phone: {$ne: ["phone", updatePhone]}},
-          {pronouns: {$ne: ["pronouns", updatePronouns]}},
-          {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
-          {organization: {$ne: ["organization", updateOrganization]}},
-          {timezone: {$ne: ["timezone", updateTimezone]}}
-        ]
-      },
-      {$set: 
-        {
-          name: updateName, 
-          username: updateUsername, 
-          phone: updatePhone, 
-          pronouns: updatePronouns,
-          discordAccount: updateDiscord,
-          organization: updateOrganization,
-          timezone: updateTimezone
-        },
-      } 
-    );
+//     // Update only if necessary.
+//     // upsert field ($or) determines if the update will perform.
+//     // Approach taken from MongoDB documentation and here:
+//     // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
+//     await userCollection.updateOne(
+//       {_id: new ObjectId(id), 
+//         $or:
+//         [
+//           {name: {$ne: ["name", updateName]}},
+//           {username: {$ne: ["username", updateUsername]}},
+//           {phone: {$ne: ["phone", updatePhone]}},
+//           {pronouns: {$ne: ["pronouns", updatePronouns]}},
+//           {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
+//           {organization: {$ne: ["organization", updateOrganization]}},
+//           {timezone: {$ne: ["timezone", updateTimezone]}}
+//         ]
+//       },
+//       {$set: 
+//         {
+//           name: updateName, 
+//           username: updateUsername, 
+//           phone: updatePhone, 
+//           pronouns: updatePronouns,
+//           discordAccount: updateDiscord,
+//           organization: updateOrganization,
+//           timezone: updateTimezone
+//         },
+//       } 
+//     );
 
-    return res.status(200).send("User profile has been successfully updated.");
+//     return res.status(200).send("User profile has been successfully updated.");
     
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+//   } catch (error) {
+//     console.error('An error has occurred:', error);
+//     return res.status(500).json({ error: 'Internal server error' });
+//   }
 
-});
+// });
 
 //-----------------> Edit Email Endpoint <-----------------//
 // Allows logged in users to change their email account.
@@ -624,7 +582,6 @@ router.post("/edit-email", async (req, res) => {
     await unverifiedEmailCollection.insertOne(temp);
 
     let link = GANTTIFY_LINK+`/edit-email/${user._id.toString()}/${token}`;
-    //let link = `http://localhost:5173/edit-email/${user._id.toString()}/${token}`; // for testing API localhost purposes only.
 
     const secureTransporter = await createSecureTransporter();
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
@@ -645,6 +602,154 @@ router.post("/edit-email", async (req, res) => {
       }
     });
 
+ 
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
+//----------- Retrieve UI Settings Users Endpoint----------------//
+router.post("/get-user-ui", async (req, res) => {
+  const {userId} = req.body;
+  let error = "";
+  
+  try {
+
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(userId)});
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    // If the fields are not found, return a default list of UI settings to prevent errors.
+    if (!user.uiOptions){
+      return res.status(201).json({
+        ribbonColor: "#FDDC87", // all instances or classnames. 
+        dashboardSideNavBarColor: "#DC6B2C",
+        dashboardBackgroundColor: "#FFFFFF",
+        projectPaneBackgroundColor: "#FFFFFF",
+        accentButtonColor: "#135C91",
+        textFontStyle: "\"Inter\", sans-serif",
+        textFontSize: "",
+      });
+    }
+
+    // Returns the user's saved ui settings as a JSON.
+    return res.status(200).json(user.uiOptions);
+
+  }
+  catch (error) {
+    console.error("Login error:", error);
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+});
+
+// <----------------- Edit UI details ----------------------------> 
+// Returns a list of ui attributes for the frontend to receive.
+router.put("/edit-user-ui/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const updateFields = req.body; // Note: updateFields must be a Object JSON.
+  let error = "";
+  
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(userId)});
+
+    // Expression to validate hex color
+    const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
+
+    // Validate that each of the updated colors are valid.
+    if (!isValidHexColor(updateFields.ribbonColor) 
+      || !isValidHexColor(updateFields.dashboardSideNavBarColor)
+      || !isValidHexColor(updateFields.dashboardBackgroundColor)
+      || !isValidHexColor(updateFields.accentButtonColor)
+      || !isValidHexColor(updateFields.projectPaneBackgroundColor)){
+      return res.status(400).send("Invalid hex code(s) provided in fields.");
+    }
+
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    if (!Object.keys(updateFields).length){
+      error = "No fields provided to update";
+      return res.status(400).json({ error });
+    }
+
+    // Determine if the chosen colors for the ribbon, buttons, and dashboard navigation bar have 
+    // enough contrast between the button text color (white) and navigation text color (black).
+    let warning = "";
+    const ribbonColor = new Chromator(updateFields.ribbonColor);
+    const dashboardNavBarColor = new Chromator(updateFields.dashboardSideNavBarColor);
+    const dashboardBackgroundColor = new Chromator(updateFields.dashboardBackgroundColor);
+    const buttonAccentColor = new Chromator(updateFields.accentButtonColor);
+    const projectPaneBackgroundColor = new Chromator(updateFields.projectPaneBackgroundColor);
+    
+    // Immutable text color.
+    const ribbonTextColor = new Chromator("#000000");
+    const buttonTextColor = new Chromator("#FFFFFF");
+
+    // Check for all custom colors if it fails WCAG 2.2 AA Contrast Standards.
+    if (ribbonColor.findContrast(ribbonTextColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and ribbon background color are insufficient.\n");
+    } 
+
+    if (ribbonColor.findContrast(projectPaneBackgroundColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and project pane background color are insufficient.\n");
+    } 
+
+    if (ribbonColor.findContrast(dashboardBackgroundColor) < 4.5){
+      console.log("ribbonColor.findContrast(dashboardBackgroundColor) = " + ribbonColor.findContrast(dashboardBackgroundColor));
+      warning = warning = warning.concat("Warning - Contrast between ribbon background color and dashboard background color are insufficient.\n");
+    }
+
+    if (dashboardNavBarColor.findContrast(dashboardBackgroundColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between ribbon text color and dashboard background color are insufficient.\n");
+    }
+
+    if (buttonAccentColor.findContrast(buttonTextColor) < 4.5){
+      warning = warning.concat("Warning - Contrast between button text color and button background color are insufficient.\n");
+    }
+
+    console.log("Applicable warnings: " + warning);
+    updateFields.alert = warning;
+
+    // Update UI fields in the database.
+    await userCollection.updateOne(
+      {_id: new ObjectId(userId), 
+        $or:
+        [
+          {'uiOptions.ribbonColor': {$ne: ["uiOptions.ribbonColor", updateFields.ribbonColor]}},
+          {'uiOptions.dashboardSideNavBarColor': {$ne: ["uiOptions.dashboardSideNavBarColor", updateFields.dashboardSideNavBarColor]}},
+          {'uiOptions.dashboardBackgroundColor': {$ne: ["uiOptions.dashboardBackgroundColor", updateFields.dashboardBackgroundColor]}},
+          {'uiOptions.projectPaneBackgroundColor': {$ne: ["uiOptions.projectPaneBackgroundColor", updateFields.projectPaneBackgroundColor]}},
+          {'uiOptions.accentButtonColor': {$ne: ["uiOptions.accentButtonColor", updateFields.accentButtonColor]}},
+          {'uiOptions.textFontStyle': {$ne: ["uiOptions.textFontStyle", updateFields.textFontStyle]}},
+          {'uiOptions.textFontSize': {$ne: ["uiOptions.textFontSize", updateFields.textFontSize]}}
+        ]
+      },
+      {$set: 
+        {
+          'uiOptions.ribbonColor': updateFields.ribbonColor, 
+          'uiOptions.dashboardSideNavBarColor': updateFields.dashboardSideNavBarColor, 
+          'uiOptions.dashboardBackgroundColor': updateFields.dashboardBackgroundColor, 
+          'uiOptions.projectPaneBackgroundColor': updateFields.projectPaneBackgroundColor,
+          'uiOptions.accentButtonColor': updateFields.accentButtonColor,
+          'uiOptions.textFontStyle': updateFields.textFontStyle,
+          'uiOptions.textFontSize': updateFields.textFontSize
+        },
+      } 
+    );
+
+    // Return the updated json when done with applicable warnings.
+    return res.status(200).json(updateFields);
  
   } catch (error) {
     console.error('An error has occurred:', error);
@@ -702,99 +807,47 @@ router.get("/edit-email/:email/:token", async (req, res) => {
 
 });
 
-let userList = [];
-//-----------------> User List Endpoint <-----------------//
-router.get("/userlist", (req, res) => {
-  res.status(200).json({ users: userList });
-});
-
 //-----------Read Users Endpoint----------------//
 router.post("/read/users", async (req, res) => {
     const { users } = req.body;
     let error = "";
-    var usersInfo = [];
-
     console.log();
     
     if (!users) {
       error = "User ids are required";
       return res.status(400).json({ error });
     }
+
+    // Convert to objectIds.
+    const userIds = users.map(n => new ObjectId(n));
+    console.log("userIds = " + userIds);
   
     try {
-      for(let i = 0;i<users.length;i++){
 
-        const db = client.db("ganttify");
-        const results = db.collection("userAccounts");
+      const db = client.db("ganttify");
+      const userCollection = db.collection("userAccounts");
 
-        // Use user ids to find the user information.
-        const user = await results.findOne({ _id:new ObjectId(users[i])});
-        usersInfo.push(user);
+      // Find all users for this task.
+      const usersInfo = await userCollection.find({_id: {$in: userIds}}, {name: 1, assignedTasks: 1, username: 1}).toArray();
+      console.log("All people in this project (including the founder):");
+      console.log(usersInfo);
 
-      }
-
-      if(!userList){
+      if (!usersInfo){
         error = "no users found";
-        res.status(400).json({error});
+        return res.status(400).json({error});
+      } else {
+        return res.status(200).json({usersInfo, error});
       }
-      else{
-        res.status(200).json({usersInfo,error});
-      }
-        
     }
     catch (error) {
       console.error("Login error:", error);
       error = "Internal server error";
-      res.status(500).json({ error });
+      return res.status(500).json({error});
     }
   });
 
 // TASK CRUD Operations
 //-----------------> Create Task Endpoint <-----------------//
-
-// Expression to validate hex color
-// const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
-
-// List of valid patterns
-// Replaced the valid file as pngs instead of svgs.
-// const allowedPatterns = {
-//   hollow_shape_family: [
-//     // "Hollow_Mac_Noodle_Density_1.svg", // Removed
-//     "Hollow_Single_Circle_Density_1.png",
-//     "Hollow_Single_Dot_Density_1.png",
-//     "Hollow_Single_Rhombus_Density_1.png",
-//     "Hollow_Single_Square_Density_1.png",
-//     "Hollow_Single_Star_Density_1.png",
-//     "Hollow_Single_Triangle_Density_1.png",
-//   ],
-//   line_family: [
-//     "Diagonal_Left_Single_Line_Density_1.png",
-//     "Diagonal_Right_Single_Line_Density_1.png",
-//     "Diagonal_Woven_Line_Density_1.png",
-//     "Single_Horizontal_Line_Density_1.png",
-//     "Single_Vertical_Line_Density_1.png",
-//   ],
-//   solid_shape_family: [
-//     "Solid_Single_Circle_Density_1.png",
-//     "Solid_Single_Dot_Density_1.png",
-//     "Solid_Single_Rhombus_Density_1.png",
-//     "Solid_Single_Square_Density_1.png",
-//     "Solid_Single_Star_Density_1.png",
-//     "Solid_Single_Triangle_Density_1.png",
-//   ], 
-//   halftone_family: [
-//     "Halftone_Density_1.png",
-//     "Halftone_Density_2.png",
-//     "Halftone_Density_3.png",
-//   ]
-// };
-
-// Expression to validate pattern selection
-// const isValidPattern = (pattern) => {
-//   const [folder, file] = pattern.split('/');
-//   return allowedPatterns[folder] && allowedPatterns[folder].includes(file);
-// };
-
 //------> Create Task & Added Task Category <-------//
 router.post('/createtask', async (req, res) => {
   const {
@@ -808,6 +861,7 @@ router.post('/createtask', async (req, res) => {
     startDateTime,
     color = '#DC6B2C',
     pattern = '',
+    patternColor = '#000000',
     taskCategory = '', // Task category is optional
     prerequisiteTasks = [], // Stores all other task ids that this task depends on being done.
     dependentTasks = [],// Stores all other task ids who are dependent on this task being done.
@@ -872,11 +926,12 @@ router.post('/createtask', async (req, res) => {
     startDateTime: new Date(startDateTime),
     color,
     pattern,
+    patternColor,
     taskCategory,
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
     dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
-    allPrequisitesDone: false // True ndicates if all of this task's prequisites are done; false if not all prequisite tasks are completed or has no prequisite tasks otherwise.
+    allPrequisitesDone: true // True ndicates if all of this task's prequisites are done or has no prequisite tasks; false if not all prequisite tasks are completed or otherwise.
   };
 
     // Insert the new task into the tasks collection
@@ -907,19 +962,22 @@ router.post('/createtask', async (req, res) => {
     // Determine if the list of prequisities for this task have already been completed.
     var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
 
-      // Check if the user assigned prequisite tasks for this new task.
-      if (prerequisiteTasks.length > 0){
+    // Check if the user assigned prequisite tasks for this new task.
+    if (prerequisiteTasks.length > 0){
 
-        // For each prequisite task, add this task as a dependency.
-        await taskCollection.updateMany(
-          {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
-          {$push: {dependentTasks: taskId}}
-        );
+      // For each prequisite task, add this task as a dependency.
+      await taskCollection.updateMany(
+        {_id: {$in: prerequisiteTasks.map((id) => new ObjectId(id))}},
+        {$push: {dependentTasks: taskId}}
+      );
 
+      if (prerequisiteTasks.length == allCompletedPrequisites.length){
         // All of this task's prequisites are done. 
-        if (prerequisiteTasks.length == allCompletedPrequisites.length){
-          await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
-        }
+        await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: true}});
+      } else {
+        // All of this task's prequisites are not done.
+        await taskCollection.updateOne({_id: taskId}, {$set: {allPrequisitesDone: false}});
+      }
 
     }
 
@@ -952,9 +1010,8 @@ router.put("/tasks/:id", async (req, res) => {
   const { id } = req.params;
   const updateFields = req.body;
   let error = "";
+  console.log("Updating task: " + id);
 
-  console.log(id);
-  
   if (!Object.keys(updateFields).length) {
     error = "No fields provided to update";
     return res.status(400).json({ error });
@@ -964,99 +1021,172 @@ router.put("/tasks/:id", async (req, res) => {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const taskCategoriesCollection = db.collection("task_categories");
+    const userCollection = db.collection("userAccounts");
     const task = await taskCollection.findOne({_id: new ObjectId(id)}); // from the database.
 
-    // If the progress changed for this task changed, or if its prequisites or dependencies changed, check it.
-    if ((updateFields.progress && updateFields.progress !== task.progress) || updateFields.dependentTasks || updateFields.prerequisiteTasks){
+    // Task to update was not found.
+    if (!task){
+      error = "Task not found. Updates failed";
+      return res.status(404).json({ error });
+    }
 
-      // Assume that the prequisites for this task changed.
-      if (updateFields.prerequisiteTasks){
+    // Determine which prequisites, if any, were added or removed from the database.
+    if (updateFields.prerequisiteTasks) {
 
-        // Determine which prequisites, if any, were added or removed from the database.
-        // Assume that newPrecedeTasks and removePrecedeTasks for this task obtain objectIds.
-        var newPrecedeTasks = updateFields.prerequisiteTasks.filter((n) => !(task.prerequisiteTasks.includes(n)));
-        var removePrecedeTasks = task.prerequisiteTasks.filter((n) => !(updateFields.prerequisiteTasks.includes(n)));
+      // Needed to properly update tasks with object ids
+      if (updateFields.prerequisiteTasks) {
+        updateFields.prerequisiteTasks = updateFields.prerequisiteTasks.map(id => new ObjectId(id));
+      }
 
-        if (newPrecedeTasks && newPrecedeTasks.length > 0){
+      var incomingPrequisiteStrings = updateFields.prerequisiteTasks.map(n => n.toString());
+      var databasePrequisiteStrings = task.prerequisiteTasks.map(n => n.toString());
 
-          // Debugging purposes. 
-          console.log("List of prequisite task ids to add: \n" + newPrecedeTasks); 
+      console.log("Incoming update:\n");
+      console.log(incomingPrequisiteStrings);
+      console.log("In the database currently:\n");
+      console.log(databasePrequisiteStrings);
+      
+      // Calculate shared prequisites for the database and updated list of prequisites.
+      const samePrequisites = incomingPrequisiteStrings.filter(n => databasePrequisiteStrings.includes(n));
+      console.log("Shared prequisites currently:\n");
+      console.log(samePrequisites);
 
-          // Added these new prequisites attached to this task. 
-          await taskCollection.updateOne({_id: new ObjectId(id)}, {$push: {prerequisiteTasks: newPrecedeTasks}});
+      // Remove shared items between lists.
+      const removeCommonIncoming = incomingPrequisiteStrings.filter(n => !samePrequisites.includes(n));
+      const removeCommonDatabase = databasePrequisiteStrings.filter(n => !samePrequisites.includes(n));
+      
+      // Calculate the added and removed prequisites for this task.
+      const addedPrequisites = removeCommonIncoming.filter(n => !removeCommonDatabase.includes(n));
+      const removedPrequisites = removeCommonDatabase.filter(n => !removeCommonIncoming.includes(n));
 
-          // Update that this task is now a dependency to those new prequisite tasks.
-          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$push: {dependentTasks: task._id}});
+      // Determine the updated list.
+      const updatePrequisiteList = samePrequisites.concat(addedPrequisites);
 
+      // Note: taskPrequisiteTasks should be an array of ObjectIds. 
+      if (addedPrequisites.length > 0 || removedPrequisites.length > 0){
+
+        if (addedPrequisites.length > 0){
+          console.log("Adding the following prequisites to this task:\n");
+          console.log(addedPrequisites);
+
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$addToSet: {prerequisiteTasks: {$each: addedPrequisites.map(n => new ObjectId(n))}}});
+          await taskCollection.updateMany({_id: {$in: addedPrequisites.map(n => new ObjectId(n))}}, {$addToSet: {dependentTasks: new ObjectId(id)}});
+
+        } else {
+          console.log("List of prequisite task ids to add: N/A");
         }
 
-        if (removePrecedeTasks && removePrecedeTasks.length > 0){
+        if (removedPrequisites.length > 0){
+          console.log("Removing the following prequisites to this task:\n");
+          console.log(removedPrequisites);
 
-          // Debugging purposes. 
-          console.log("List of prequisite tasks ids remove: \n" + removePrecedeTasks); 
-
-          // Remove these new prequisites attached to this task. 
-          await taskCollection.updateOne({_id: new ObjectId(id)}, {$pull: {prerequisiteTasks: removePrecedeTasks}});
-
+          // Remove all selected prequisites from this task.
+          await taskCollection.updateOne({_id: new ObjectId(id)}, {$pullAll: {prerequisiteTasks: removedPrequisites.map(n => new ObjectId(n))}});
+          
           // Update that this task is no longer a dependency to those new prequisite tasks.
-          await taskCollection.updateMany({_id: {$in: newPrecedeTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: task._id}});
+          await taskCollection.updateMany({_id: {$in: removedPrequisites.map(n => new ObjectId(n))}}, {$pull: {dependentTasks: new ObjectId(id)}});
 
+        } else {
+          console.log("List of prequisite task ids to remove: N/A");
         }
 
         // Reexamine if all of this task's prequisites are completed or not.
-        var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-        console.log("Number of updated completed prequisites for this task: " + allCompletedPrequisites + ". Out of a total of " + task.prerequisiteTasks.length + " prequisite tasks."); // debugging purposes.
+        // Use the array.
+        var allCompletedPrequisites = await taskCollection.find({$and: [{_id: {$in: updatePrequisiteList.map(n => new ObjectId(n))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        console.log("All completed prequisites:\n" + allCompletedPrequisites);
 
-        if (allCompletedPrequisites.length == task.prerequisiteTasks.length){
-          // This task's prequisites are all completed.
+        if ((updatePrequisiteList.length == 0 || allCompletedPrequisites.length == updatePrequisiteList.length)){
+          // This task's prequisites are all completed, or this task no longer has any prequisites attached to it.
           updateFields.allPrequisitesDone = true;
+
         } else {
+
           // Not all of this task's requisites are done.
           updateFields.allPrequisitesDone = false;
-        }
 
-      }
-
-      // If this task's completion status has changed, evaluate the task's dependencies.
-      if (updateFields.progress && updateFields.progress !== task.progress){
-
-        // Ensure that the progress status of this task is updated before proceeding.
-        // If this task happens to be the one that fulfills the dependency's prequisities...
-        await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
-
-        // Find all dependencies of this task. 
-        var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
-
-        for (const dependTasks of allDependencies) {
-          
-          // Check each dependent task's prequisities.
-          var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
-          
-          // If this task caused those tasks status to change...
-          if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
-            
-            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " has all of its prequisities completed.");
-            
-            // Update the status of this dependency.
-            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
-
-          } else {
-
-            console.log("Dependency " + dependTasks.taskTitle +  " of task " + task.taskTitle + " prequisities no longer has all of its prequisites completed.");
-            
-            // Update the status of this dependency.
-            await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
-
+          // This task can not be completed - it is only in-progress.
+          // Update the status of this task in the database.
+          if (task.progress === "Completed"){
+            console.log("Changing task from completed to in-progress due to not of its prequisites being completed.");
+            await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: "In-progress"}});
           }
-        }        
+        }
       }
+    }
+    
+    // If this task's completion status has changed, evaluate the task's dependencies.
+    if (updateFields.progress && updateFields.progress !== task.progress){
+
+      // Convert all dependent tasks into ObjectIds from the updateField.
+      if (updateFields.dependentTasks) {
+        updateFields.dependentTasks = updateFields.dependentTasks.map(id => new ObjectId(id));
+      }
+
+      // Ensure that the progress status of this task is updated before proceeding.
+      // If this task happens to be the one that fulfills the dependency's prequisities...
+      await taskCollection.updateOne({_id: new ObjectId(id)}, {$set: {progress: updateFields.progress}});
+
+      // Find all dependencies of this task. 
+      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+      console.log("All Dependencies ", allDependencies);
+      for (const dependTasks of allDependencies) {
+        
+        // Check each dependent task's prequisities.
+        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        
+        // If this task caused those tasks status to change...
+        if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
+          
+          console.log("Dependency \"" + dependTasks.taskTitle +  "\" of task \"" + task.taskTitle + "\" has all of its prequisities completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: true}});
+
+        } else {
+
+          console.log("Dependency \"" + dependTasks.taskTitle +  "\" of task \"" + task.taskTitle + "\" prequisities no longer has all of its prequisites completed.");
+          
+          // Update the status of this dependency.
+          await taskCollection.updateOne({_id: dependTasks._id}, {$set: {allPrequisitesDone: false}});
+
+        }
+      }        
     }
 
     // Convert any provided ObjectId fields
     if (updateFields.assignedTasksUsers) {
+      
       updateFields.assignedTasksUsers = updateFields.assignedTasksUsers.map(
         (id) => new ObjectId(id)
       );
+
+      var incomingAssignStrings = updateFields.assignedTasksUsers.map(n => n.toString());
+      var databaseAssignStrings = task.assignedTasksUsers.map(n => n.toString());
+
+      // Check if we need to add or remove assigned team members for the assigned to-do list.
+      // Calculate shared prequisites for the database and updated list of prequisites.
+      const sameAssignedUsers = incomingAssignStrings.filter(n => databaseAssignStrings.includes(n));
+
+      // Remove shared items between lists.
+      const removeCommonIncoming = incomingAssignStrings.filter(n => !sameAssignedUsers.includes(n));
+      const removeCommonDatabase = databaseAssignStrings.filter(n => !sameAssignedUsers.includes(n));
+      
+      // Calculate the added and removed team members for this task.
+      const addedAssigned = removeCommonIncoming.filter(n => !removeCommonDatabase.includes(n));
+      const removedAssigned = removeCommonDatabase.filter(n => !removeCommonIncoming.includes(n));
+
+      // Add this task as a item on their to-do list.
+      await userCollection.updateMany(
+        { _id: { $in: addedAssigned.map((id) => new ObjectId(id)) } },
+        { $push: {toDoList: new ObjectId(id)}}
+      );
+
+      // Then remove this task as an item on their to-do list.
+      await userCollection.updateMany(
+        { _id: { $in: removedAssigned.map((id) => new ObjectId(id)) } },
+        { $pull: {toDoList: new ObjectId(id)}}
+      );
+
     }
 
     // Update the tied project id if necessary.
@@ -1095,29 +1225,22 @@ router.put("/tasks/:id", async (req, res) => {
         };
 
         const result = await taskCategoriesCollection.insertOne(newCategory);
-        category = result.ops[0];  // Retrieve the newly inserted category
+        category = result.ops[0];  // Retrieve the newly inserted category.
+
       }
 
       // Update the task with the category ID
       updateFields.taskCategoryId = new ObjectId(category._id);
     }
 
-    // Update the task itself
-    const result = await taskCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: updateFields }
-    );
+    // Update the task itself.
+    await taskCollection.updateOne({ _id: new ObjectId(id)}, {$set: updateFields});
+    return res.status(200).json({message: "Task updated successfully"});
 
-    if (result.modifiedCount === 0) {
-      error = "Task not found or no changes made";
-      return res.status(404).json({ error });
-    }
-
-    res.status(200).json({ message: "Task updated successfully" });
   } catch (error) {
     console.error("Error updating task:", error);
     error = "Internal server error";
-    res.status(500).json({ error });
+    return res.status(500).json({ error });
   }
 });
 
@@ -1225,26 +1348,34 @@ router.delete("/tasks/:id", async (req, res) => {
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const projectsCollection = db.collection("projects");
+    const teamCollection = db.collection("teams");
+    const userCollection = db.collection("userAccounts");
     const task = await taskCollection.findOne({_id: new ObjectId(taskId)});
     
-    // Prequisite tasks for this deleted task no longer have this task as a dependency.
-    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {await taskCollection.updateMany({_id: {$in: task.prerequisiteTasks.map((id) => new ObjectId(id))}}, {$pull: {dependentTasks: new ObjectId(taskId)}})}
+    // Remove all prequisites attached to this task.
+    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0) {
+      console.log("Removing these task(s) as a dependency for each task's prequisites.\n");
+      console.log(task.prerequisiteTasks);
+      await taskCollection.updateMany({_id: {$in: task.dependentTasks}}, {$pull: {dependentTasks: new ObjectId(taskId)}})
+    }
 
     // Dependent tasks for this deleted task no longer have this task as a prequisite.
     if (task.dependentTasks && task.dependentTasks.length > 0) {
-      
-      // Remove this task as a prequisite to those tasks.
-      await taskCollection.updateMany({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}})
+      console.log("Removing these task(s) as a dependency for tasks that have this task as a prequisite.");
 
       // Find all dependencies of this task. 
-      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks.map((id) => new ObjectId(id))}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
+      var allDependencies = await taskCollection.find({_id: {$in: task.dependentTasks}}, {prerequisiteTasks: 1, assignedTasksUsers: 1, taskTitle: 1}).toArray();
       
       // Determine if removing this task consequentially caused its dependent tasks to remove a prequisite,
       // and potentially now having its prequisite tasks completed. 
       for (const dependTasks of allDependencies) {
-        
+        console.log("Dependent task of this task:" + dependTasks);
+
+        // Remove this task as a prequisite to this task.
+        await taskCollection.updateOne({_id: dependTasks._id}, {$pull: {prerequisiteTasks: new ObjectId(taskId)}});
+
         // Check each dependent task's prequisities.
-        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks.map((id) => new ObjectId(id))}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
+        var completedDependPrequisites = await taskCollection.find({$and: [{_id: {$in: dependTasks.prerequisiteTasks}}, {progress: {$eq: "Completed"}}]}, {progress: 1}).toArray(); 
         
         // If this task caused those tasks status to change...
         if (dependTasks.prerequisiteTasks.length == completedDependPrequisites.length){
@@ -1286,9 +1417,27 @@ router.delete("/tasks/:id", async (req, res) => {
     if (projectUpdateResult.modifiedCount === 0) {
       return res.status(404).json({ message: "Task not found in project" });
     }
-    
+        
+    // Remove this task from all to-do lists.
+    // Find the tied project this task is under.
+    const project = await projectsCollection.findOne({_id: task.tiedProjectId});
+
+    // Find all members of this project.
+    const projectTeam = await teamCollection.findOne({_id: project.team});
+
+    // For each person tied to this project, remove this project and tasks from their project arrays and to-do lists.
+    var founderOnProject = [projectTeam.founderId];
+    const allUsersOnProject = founderOnProject.concat(projectTeam.editors, projectTeam.members);
+
+    // Remove this task from the to-do lists of each user on this project.
+    await userCollection.updateMany(
+      {_id: {$in: allUsersOnProject.map((id) => new ObjectId(id))}}, 
+      {$pull: {toDoList: new ObjectId(taskId)}}
+    );
+
     res.status(200).json({ message: "Task deleted successfully from both task and project collections." });
-    
+
+
   } catch (error) {
     console.error("Error deleting task:", error);
     error = "Internal server error";
@@ -1485,6 +1634,7 @@ router.post("/createproject", async (req, res) => {
           taskCategoryId: null,
           color: task.Color,
           pattern: task.Pattern || "No Pattern",
+          patternColor: task.patternColor,
           progress: "Not Started",
           assignedTasksUsers: [],
           prerequisiteTasks: [],
@@ -1721,14 +1871,13 @@ router.get("/projects/:projectId", async (req, res) => {
 });
 
 
-//-----------------> Delete a project <-----------------//
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
     return date;
 }
 
-// Delete a project
+//-----------------> Delete a project <-----------------//
 router.delete("/projects/:id", async (req, res) => {
   const { id } = req.params;
   let error = "";
@@ -2035,7 +2184,6 @@ router.post("/user/request-delete/:userId", async (req, res) => {
     if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
 
     let link = GANTTIFY_LINK+`/confirm-delete/${userId}/${token}`;
-    //let link = `http://localhost:5173/confirm-delete/${userId}/${token}`;
 
     let mailDetails = {
       from: process.env.USER_EMAIL,
@@ -2082,21 +2230,21 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
     );
 
     await deletedAccountProjectsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTasksCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTeamsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
@@ -2135,7 +2283,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
               // Set dateMoved for tasks
               const tasksToMove = tasks.map(task => ({
                 ...task,
-                dateMoved: new Date(),
+                accountDeleted: new Date(),
               }));
               
               await deletedAccountTasksCollection.insertMany(tasksToMove);
@@ -2162,7 +2310,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
               // Set dateMoved and metadata for the team
               const teamToMove = {
                 ...team,
-                dateMoved: new Date(),
+                accountDeleted: new Date(),
               };
               
               await deletedAccountTeamsCollection.insertOne(teamToMove);
@@ -2228,7 +2376,6 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
 
       // Set up this restoration link.
       let restoreLink = GANTTIFY_LINK+`/restore-account/${userId}/${newToken}`;
-      //let restoreLink = `http://localhost:5173/restore-account/${userId}/${newToken}`;
 
       // Send an email notification
       let mailDetails = {
@@ -2283,21 +2430,21 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
     );
 
     await deletedAccountProjectsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000, // expires in 72 hours.
       }
     );
 
     await deletedAccountTasksCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
     );
 
     await deletedAccountTeamsCollection.createIndex(
-      { "dateMoved": 1 },
+      { "accountDeleted": 1 },
       {
         expireAfterSeconds: 2592000,
       }
@@ -3109,6 +3256,7 @@ router.post("/search/tasks/project", async (req, res) => {
   }
 });
 
+// <------------- Update To-Do List of a task --------------->
 router.post("/updateSingleUserToDoList", async (req, res) => {
   const { taskId, userId, isChecked } = req.body;
   let error = "";
@@ -3119,6 +3267,8 @@ router.post("/updateSingleUserToDoList", async (req, res) => {
   }
 
   try {
+
+    // Update the to-do list of each user.
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     await userCollection.updateOne({ _id: new ObjectId(userId) }, isChecked ? { $addToSet: { toDoList: new ObjectId(taskId) } } : { $pull: { toDoList: new ObjectId(taskId) } });
@@ -3191,8 +3341,8 @@ router.post('/invite-user', async (req, res) => {
   try {
     const db = client.db('ganttify');
     const userAccounts = db.collection('userAccounts');
-    const user = await userAccounts.findOne({ email });
-
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({queryEncryptedEmail});
     const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
     const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
     
@@ -3236,7 +3386,8 @@ router.get('/accept-invite/:token', async (req, res) => {
     const userAccounts = db.collection('userAccounts');
     const projectCollection = db.collection('projects');
     const teamCollection = db.collection('teams');
-    const user = await userAccounts.findOne({ email });
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({queryEncryptedEmail});
 
     if (user) {
       const secret = process.env.JWT_SECRET + user.password;
@@ -3271,142 +3422,6 @@ router.get('/accept-invite/:token', async (req, res) => {
   } catch (error) {
     console.error('Error during invitation acceptance:', error);
     res.status(400).send('Invalid ID format');
-  }
-});
-
-router.post("/register/:token", async (req, res) => {
-  const { token } = req.params;
-  const { email, name, phone, password, username } = req.body;
-
-  if (!email || !name || !phone || !password || !username) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-
-  try {
-
-    const decodedToken = jwt.decode(token);
-    const { projectId } = decodedToken;
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const existingUser = await userCollection.findOne({ email });
-
-    if (existingUser) {
-      return res.status(400).json({ error: "Email already used" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = {
-      email,
-      name,
-      phone,
-      password: hashedPassword,
-      username,
-      accountCreated: new Date(),
-      projects: [],
-      toDoList: [],
-      isEmailVerified: false,
-    };
-
-    // Insert the new user
-    const insertedUser = await userCollection.insertOne(newUser);
-    const secret = process.env.JWT_SECRET + hashedPassword;
-    const verificationToken = jwt.sign({ email: newUser.email, projectId }, secret, { expiresIn: "5m" });
-    let link = `https://ganttify-5b581a9c8167.herokuapp.com/verify-invite/${verificationToken}`;
-
-    const secureTransporter = await createSecureTransporter();
-    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
-
-    let mailDetails = {
-      from: process.env.USER_EMAIL,
-      to: email,
-      subject: 'Verify Your Ganttify Account',
-      text: `Hello ${newUser.name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-      html: `<p>Hello ${newUser.name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
-    };
-
-    secureTransporter.sendMail(mailDetails, function (err, data) {
-      if (err) {
-        return res.status(500).json({ error: 'Error sending verification email' });
-      } else {
-        return res.status(200).json({ message: 'Verification email sent' });
-      }
-    });
-  } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error });
-  }
-});
-
-router.post('/decode-token', (req, res) => {
-  const { token } = req.body;
-  
-  if (!token) {
-    return res.status(400).json({ error: 'Token is required' });
-  }
-
-  try {
-    const decoded = jwt.decode(token);
-    if (!decoded || !decoded.email) {
-      return res.status(400).json({ error: 'Invalid token' });
-    }
-
-    res.json({ email: decoded.email });
-  } catch (error) {
-    console.error('Error decoding token:', error);
-    res.status(500).json({ error: 'Failed to decode token' });
-  }
-});
-
-router.get('/verify-invite/:token', async (req, res) => {
-  const { token } = req.params;
-
-  try {
-
-    const decodedToken = jwt.decode(token);
-    if (!decodedToken) {
-      return res.status(400).send("Invalid token");
-    }
-
-    const { email, projectId } = decodedToken;
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const projectCollection = db.collection("projects");
-    const teamCollection = db.collection("teams");
-    const user = await userCollection.findOne({ email });
-
-    if (!user) {
-      return res.status(404).send("User does not exist");
-    }
-
-    const secret = process.env.JWT_SECRET + user.password;
-
-    try {
-      jwt.verify(token, secret);
-
-      await userCollection.updateOne(
-        { _id: user._id },
-        { $set: { isEmailVerified: true }, $addToSet: { projects: projectId } }
-      );
-
-      const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
-      if (!project) {
-        return res.status(404).send('Project does not exist');
-      }
-
-      await teamCollection.updateOne(
-        { _id: new ObjectId(project.team) },
-        { $addToSet: { members: user._id } }
-      );
-
-
-      return res.status(200).send("User verified and added to project and team");
-    } catch (error) {
-      console.error('Token verification failed:', error);
-      return res.status(400).send("Invalid or expired token");
-    }
-  } catch (error) {
-    console.error('Error during invitation acceptance:', error);
-    return res.status(400).send("Invalid ID format");
   }
 });
 
@@ -3451,11 +3466,9 @@ router.put("/tasks/:id/dates", async (req, res) => {
 router.get("/fetchTask/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    //console.log("fetching task: " + id);
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const task = await taskCollection.findOne({ _id: new ObjectId(id) });
-    //console.log("found task: " + task.taskTitle );
 	  if (!task) {return res.status(404).json({ error: "Task not found" });}
     
       res.status(200).json(task);
