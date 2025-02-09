@@ -1,10 +1,13 @@
+
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
 const LOCALHOST = `http://localhost:5173`;
 const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
+
 if (process.env.NODE_ENV === 'dev'){
   console.log("Running in Dev Mode");
 }
+
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
