@@ -1,13 +1,10 @@
-
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
 const GANTTIFY_IP = "206.81.1.248";
 const LOCALHOST = `http://localhost:5173`;
 const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `http://`+GANTTIFY_IP;
-
 if (process.env.NODE_ENV === 'dev'){
   console.log("Running in Dev Mode");
 }
-
 const express = require("express");
 const {MongoClient, ObjectId, ClientEncryption, Timestamp, Binary, UUID} = require("mongodb");
 const bcrypt = require("bcrypt");
@@ -466,71 +463,6 @@ router.post('/reset-password', async (req, res) =>
       res.status(500).json({ message: error });
     } 
 });
-
-//-----------------> Edit User Profile Details Endpoint <-----------------//
-// Edits profile details that do not require second verifcation.
-// router.post("/edit-user-profile-details", async (req, res) => {
-//   const { id, name, username, phone, pronouns, discordAccount, organization, timezone } = req.body;
-//   let error = "";
-
-//   try {
-
-//     const db = client.db("ganttify");
-//     const userCollection = db.collection("userAccounts");
-//     const user = await userCollection.findOne({_id: new ObjectId(id)});
-
-//     if (!user){return res.status(404).send("User profile does not exist.");}
-    
-//     // Debugging purposes only.
-//     // console.log("Old user details:");
-//     // console.log(user);
-
-//     var updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     var updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    
-//     // Update only if necessary.
-//     // upsert field ($or) determines if the update will perform.
-//     // Approach taken from MongoDB documentation and here:
-//     // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
-//     await userCollection.updateOne(
-//       {_id: new ObjectId(id), 
-//         $or:
-//         [
-//           {name: {$ne: ["name", updateName]}},
-//           {username: {$ne: ["username", updateUsername]}},
-//           {phone: {$ne: ["phone", updatePhone]}},
-//           {pronouns: {$ne: ["pronouns", updatePronouns]}},
-//           {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
-//           {organization: {$ne: ["organization", updateOrganization]}},
-//           {timezone: {$ne: ["timezone", updateTimezone]}}
-//         ]
-//       },
-//       {$set: 
-//         {
-//           name: updateName, 
-//           username: updateUsername, 
-//           phone: updatePhone, 
-//           pronouns: updatePronouns,
-//           discordAccount: updateDiscord,
-//           organization: updateOrganization,
-//           timezone: updateTimezone
-//         },
-//       } 
-//     );
-
-//     return res.status(200).send("User profile has been successfully updated.");
-    
-//   } catch (error) {
-//     console.error('An error has occurred:', error);
-//     return res.status(500).json({ error: 'Internal server error' });
-//   }
-
-// });
 
 //-----------------> Edit Email Endpoint <-----------------//
 // Allows logged in users to change their email account.
@@ -2101,44 +2033,66 @@ router.delete("/wipeproject/:id", async (req, res) => {
   }
 });
 
-// -----------------> Update a specific user <-----------------//
+// -----------------> Update/edit a specific user profile <-----------------//
 router.put("/user/:userId", async (req, res) => {
   const userId = req.params.userId;
-  // const { name, email, phone } = req.body;
-  const { name, phone, discordAccount, pronouns, timezone } = req.body;
+  const { name, username, phone, discordAccount, pronouns, organization, timezone } = req.body;
 
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
 
-    // Validate that the user exists
+    // Validate that the user exists.
     const user = await userCollection.findOne({ _id: new ObjectId(userId) });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const updates = {};
-    if (name !== undefined) updates.name = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    if (phone !== undefined) updates.phone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    if (discordAccount !== undefined && discordAccount !== '') updates.discordAccount = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    if (pronouns !== undefined && pronouns !== '') updates.pronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    if (timezone !== undefined && timezone !== '') updates.timezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updateName = await encryptClient.encrypt(name, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updateUsername = await encryptClient.encrypt(username, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updatePhone = await encryptClient.encrypt(phone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updatePronouns = await encryptClient.encrypt(pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updateDiscord = await encryptClient.encrypt(discordAccount, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updateOrganization = await encryptClient.encrypt(organization, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    let updateTimezone = await encryptClient.encrypt(timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
 
-    // Update the user with the new data
-    const updateResult = await userCollection.updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: updates }
+    // Update only if necessary.
+    // upsert field ($or) determines if the update will perform.
+    // Approach taken from MongoDB documentation and here:
+    // https://www.mongodb.com/community/forums/t/update-document-only-if-new-data-differs-from-current-data/139827/2
+    await userCollection.updateOne(
+      {_id: new ObjectId(userId), 
+        $or:
+        [
+          {name: {$ne: ["name", updateName]}},
+          {username: {$ne: ["username", updateUsername]}},
+          {phone: {$ne: ["phone", updatePhone]}},
+          {pronouns: {$ne: ["pronouns", updatePronouns]}},
+          {discordAccount: {$ne: ["discordAccount", updateDiscord]}},
+          {organization: {$ne: ["organization", updateOrganization]}},
+          {timezone: {$ne: ["timezone", updateTimezone]}}
+        ]
+      },
+      {$set: 
+        {
+          name: updateName, 
+          username: updateUsername, 
+          phone: updatePhone, 
+          pronouns: updatePronouns,
+          discordAccount: updateDiscord,
+          organization: updateOrganization,
+          timezone: updateTimezone
+        },
+      } 
     );
 
-    if (updateResult.matchedCount === 0) {
-      return res.status(404).json({ error: "User not found or no changes made." });
-    }
-
-    // Fetch the updated user
+    // Fetch the updated user.
     const updatedUser = await userCollection.findOne(
       { _id: new ObjectId(userId) },
       { projection: { password: 0 } }
     );
+
+    console.log(updatedUser);
     
     res.status(200).json(updatedUser);
   } catch (error) {
