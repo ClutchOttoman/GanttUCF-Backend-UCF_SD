@@ -3370,7 +3370,7 @@ router.post('/generate-invite-link', async (req, res) => {
 
     const secret = process.env.JWT_SECRET + projectId;
     const token = jwt.sign({ projectId }, secret);
-    const link = `http://localhost:5173/accept-invite/${token}`;
+    const link = GANTTIFY_LINK+`/accept-invite/${token}`;
 
 
 
