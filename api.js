@@ -2705,6 +2705,39 @@ router.post("/searchusers", async (req, res) => {
   }
 });
 
+
+// --------> Search users by email <--------//
+router.get('/search-user/:email', async (req, res) => {
+  const { email } = req.params;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    const db = client.db('ganttify');
+    const userAccounts = db.collection('userAccounts');
+
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({ email: queryEncryptedEmail});
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      email: email,
+      name: user.name,
+      projects: user.projects || [],
+    });
+
+  } catch (error) {
+    console.error('Error searching for user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 //-> Search Project by Title & Sort by Date Created <-//
 router.post("/search/projects", async (req, res) => {
 
@@ -3313,100 +3346,130 @@ router.get('/teams/:teamId', async (req, res) => {
   }
 });
 
-//Invite team member api's//
-router.post('/invite-user', async (req, res) => {
-  const { email, projectId } = req.body;
 
-  if (!email || !projectId) {
-    return res.status(400).json({ error: 'Email and Project ID are required' });
+
+router.post('/generate-invite-link', async (req, res) => {
+  const { projectId } = req.body;
+
+  if (!projectId) {
+    return res.status(400).json({ error: 'Project ID is required' });
   }
 
   try {
+    // console.log("Project ID: ", projectId); // Debug log
+
     const db = client.db('ganttify');
-    const userAccounts = db.collection('userAccounts');
-    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    const user = await userAccounts.findOne({queryEncryptedEmail});
-    const secret = process.env.JWT_SECRET + (user ? user.password : 'newuseraccount');
-    const token = jwt.sign({ email, projectId }, secret, { expiresIn: '5m' });
-    
-    const link = user ? `https://ganttify-5b581a9c8167.herokuapp.com/accept-invite/${token}` : `https://ganttify-5b581a9c8167.herokuapp.com/register/${token}`;
+    const projectCollection = db.collection('projects');
 
-    const secureTransporter = await createSecureTransporter();
-    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
+    const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+    // console.log("Project Found: ", project);
 
-    const mailDetails = {
-      from: process.env.USER_EMAIL,
-      to: email,
-      subject: 'Invitation to Join Ganttify',
-      text: `Hello,\n\nYou have been invited to join a project on Ganttify. Click the link to ${user ? 'accept the invitation' : 'create an account and join'}: ${link}`,
-      html: `<p>Hello,</p><p>You have been invited to join a project on Ganttify. Click the button below to ${user ? 'accept the invitation' : 'create an account and join'}:</p><a href="${link}" class="btn">Join Ganttify</a>`,
-    };
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
 
-    secureTransporter.sendMail(mailDetails, (err, data) => {
+    const secret = process.env.JWT_SECRET + projectId;
+    const token = jwt.sign({ projectId }, secret);
+    const link = `http://localhost:5173/accept-invite/${token}`;
 
-      if (err) {
-        return res.status(500).json({ error: 'Error sending email' });
-      } else {
-        return res.status(200).json({ message: 'Invitation email sent' });
-      }
 
-    });
+
+    const updateResult = await projectCollection.updateOne(
+      { _id: new ObjectId(projectId) },
+      { $set: { inviteLink: link } }
+    );
+
+    res.status(200).json({ message: 'Invite link generated', link });
   } catch (error) {
-    console.error('Error inviting user:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Error generating invite link:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
-  
 
-router.get('/accept-invite/:token', async (req, res) => {
-  const { token } = req.params;
+
+router.get('/accept-invite/:token/:email', async (req, res) => {
+  const { token, email } = req.params;
 
   try {
     const decodedToken = jwt.decode(token);
-    const { email, projectId } = decodedToken;
-
-    const db = client.db('ganttify');
-    const userAccounts = db.collection('userAccounts');
-    const projectCollection = db.collection('projects');
-    const teamCollection = db.collection('teams');
-    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-    const user = await userAccounts.findOne({queryEncryptedEmail});
-
-    if (user) {
-      const secret = process.env.JWT_SECRET + user.password;
-
-      try {
-        jwt.verify(token, secret);
-
-        await userAccounts.updateOne(
-          { _id: user._id },
-          { $addToSet: { projects: new ObjectId(projectId) } }
-        );
-
-        const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
-
-        if (!project) {
-          return res.status(404).send('Project does not exist');
-        }
-
-        await teamCollection.updateOne(
-          { _id: new ObjectId(project.team) },
-          { $addToSet: { members: user._id } }
-        );
-        res.sendFile(path.resolve(__dirname, 'frontend', 'build', 'index.html'));
-      } catch (error) {
-        console.error('Invalid or expired token:', error);
-        res.status(400).send('Invalid or expired token');
-      }
-    } else {
-      return res.status(404).send('User does not exist');
+    if (!decodedToken) {
+      return res.status(400).send('Invalid token');
     }
 
+    const { projectId } = decodedToken;
+    const db = client.db('ganttify');
+    const projectCollection = db.collection('projects');
+    const teamCollection = db.collection('teams');
+    const userAccounts = db.collection('userAccounts');
+    const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+
+    if (!project) {
+      return res.status(404).send('Project does not exist');
+    }
+
+    const secret = process.env.JWT_SECRET + projectId;
+
+    try {
+      jwt.verify(token, secret);
+
+      // const email = req.query.email;
+      if (!email) {
+        return res.status(400).send('Email is required');
+      }
+
+      var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+      const user = await userAccounts.findOne({ email: queryEncryptedEmail});
+
+      if (!user) {
+        return res.status(404).send('User does not exist');
+      }
+
+      await userAccounts.updateOne(
+        { _id: user._id },
+        { $addToSet: { projects: new ObjectId(projectId) } }
+      );
+
+      await teamCollection.updateOne(
+        { _id: new ObjectId(project.team) },
+        { $addToSet: { members: user._id } }
+      );
+
+      res.status(200).send('Successfully joined project');
+    } catch (error) {
+      console.error('Token verification failed:', error);
+      res.status(400).send('Invalid or expired token');
+    }
   } catch (error) {
-    console.error('Error during invitation acceptance:', error);
+    console.error('Error during joining project:', error);
     res.status(400).send('Invalid ID format');
   }
 });
+
+router.get('/get-invite-link/:projectId', async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    const db = client.db('ganttify');
+    const projectCollection = db.collection('projects');
+    const project = await projectCollection.findOne({ _id: new ObjectId(projectId) });
+    // console.log("inviteLink: ", project.inviteLink);
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    res.status(200).json({ inviteLink: project.inviteLink });
+  } catch (error) {
+    console.error('Error fetching invite link:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+
+
+
 
 router.put("/tasks/:id/dates", async (req, res) => {
   const { id } = req.params;
@@ -3449,9 +3512,11 @@ router.put("/tasks/:id/dates", async (req, res) => {
 router.get("/fetchTask/:id", async (req, res) => {
   const { id } = req.params;
   try {
+    //console.log("fetching task: " + id);
     const db = client.db("ganttify");
     const taskCollection = db.collection("tasks");
     const task = await taskCollection.findOne({ _id: new ObjectId(id) });
+    //console.log("found task: " + task.taskTitle );
 	  if (!task) {return res.status(404).json({ error: "Task not found" });}
     
       res.status(200).json(task);
