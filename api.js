@@ -752,7 +752,7 @@ router.post("/read/users", async (req, res) => {
 
     // Convert to objectIds.
     const userIds = users.map(n => new ObjectId(n));
-    console.log("userIds = " + userIds);
+    //console.log("userIds = " + userIds);
   
     try {
 
@@ -1203,6 +1203,34 @@ router.put("/tasks/:id", async (req, res) => {
     error = "Internal server error";
     return res.status(500).json({ error });
   }
+});
+
+// ------------> Get all prequisites and their progress for a specified task. <------------
+router.post("/readallprequisites", async (req, res) => {
+  const {id} = req.body;
+  let error = "";
+
+  try {
+    const db = client.db("ganttify");
+    const taskCollection = db.collection("tasks");
+    const task = await taskCollection.findOne({_id: new ObjectId(id)}, {prerequisiteTasks: 1});
+
+    if (!task){
+      error = "Task not found. Updates failed";
+      return res.status(404).json({error});
+    }
+    
+    if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0){
+      const allPrequisitesOfTask = await taskCollection.find({_id: {$in: task.prerequisiteTasks}}, {taskTitle: 1, progress: 1}).toArray();
+      return res.status(200).json({allPrequisitesOfTask});
+    } else {
+      return res.status(200).json({});
+    }
+
+  } catch (error){
+    res.status(500).json({ error: "Internal server error" });
+  }
+
 });
 
 //-------------> Update Task Category ONLY <------------//
@@ -3345,8 +3373,6 @@ router.get('/teams/:teamId', async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
-
 
 router.post('/generate-invite-link', async (req, res) => {
   const { projectId } = req.body;
