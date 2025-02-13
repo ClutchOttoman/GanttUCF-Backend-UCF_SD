@@ -232,13 +232,15 @@ router.get('/verify-email/:email/:token', async (req, res) => {
         projects: [],
         toDoList: [],
         uiOptions: {
+          useDefaultDarkMode: false,
+          useDefaultHighContrastMode: false,
           ribbonColor: "#FDDC87",
           dashboardSideNavBarColor: "#DC6B2C",
           dashboardBackgroundColor: "#FFFFFF", // 
           projectPaneBackgroundColor: "#FFFFFF", // default option
           accentButtonColor: "#135C91", // all buttons
-          textFontStyle: "\"Inter\", sans-serif", // default option - 
-          textFontSize: "",
+          textFontStyle: "Inter", // default option - 
+          textFontSize: "Default",
         } // Object for holding UI options.
       };
 
@@ -307,7 +309,7 @@ router.post("/login", async (req, res) => {
     var encryptTimezone = await encryptClient.encrypt(verifiedUser.timezone, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     var encryptPronouns = await encryptClient.encrypt(verifiedUser.pronouns, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     
-    res.status(200).json({
+    return res.status(200).json({
       token,
       _id: verifiedUser._id,
       email: encryptEmail,
@@ -543,7 +545,7 @@ router.post("/edit-email", async (req, res) => {
 });
 
 //----------- Retrieve UI Settings Users Endpoint----------------//
-router.post("/get-user-ui", async (req, res) => {
+router.post("/ui-settings/get-user-ui", async (req, res) => {
   const {userId} = req.body;
   let error = "";
   
@@ -559,14 +561,17 @@ router.post("/get-user-ui", async (req, res) => {
 
     // If the fields are not found, return a default list of UI settings to prevent errors.
     if (!user.uiOptions){
+      console.log("Failed to load custom UI options.");
       return res.status(201).json({
+        useDefaultDarkMode: false,
+        useDefaultHighContrastMode: false,
         ribbonColor: "#FDDC87", // all instances or classnames. 
         dashboardSideNavBarColor: "#DC6B2C",
         dashboardBackgroundColor: "#FFFFFF",
         projectPaneBackgroundColor: "#FFFFFF",
         accentButtonColor: "#135C91",
-        textFontStyle: "\"Inter\", sans-serif",
-        textFontSize: "",
+        textFontStyle: "Inter",
+        textFontSize: "Default",
       });
     }
 
@@ -575,11 +580,145 @@ router.post("/get-user-ui", async (req, res) => {
 
   }
   catch (error) {
-    console.error("Login error:", error);
+    console.error("Internal error:", error);
     error = "Internal server error";
     return res.status(500).json({error});
   }
 });
+
+// <----------- Toggles Default Dark Mode -----------------> 
+router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
+  const {id} = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
+
+    if (!user){
+      console.log("User not found.");
+      return res.status(400).send("User not found.");
+    }
+
+    // Toggle the dark mode to its opposite mode.
+    const uiOptions = user.uiOptions;
+
+    // Toggle the dark mode to its opposite mode.
+    if (uiOptions.useDefaultDarkMode){
+
+      // Disable dark mode.
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
+
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+
+    } else {
+
+      // Enable dark mode.
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": true, "uiOptions.useDefaultHighContrastMode": false}});
+
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+
+    }
+
+    return res.status(200).json({message: "Dark mode toggled successfully"});
+ 
+  } catch (error) {
+    console.error(error);
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+
+});
+
+// <----------- Toggles Default High-Contrast Mode -----------------> 
+router.put("/ui-settings/toggle-default-high-contrast-mode/:id", async (req, res) => {
+  const {id} = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    // Toggle the high contrast mode to its opposite mode.
+    const uiOptions = user.uiOptions;
+
+    // Toggle to the opposite boolean.
+    if (uiOptions.useDefaultHighContrastMode){
+
+      // Disable high contrast.
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
+    
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+
+    } else {
+
+      // Enable high contrast.
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": true}});
+
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+    }
+
+    return res.status(200).json({message: "High contrast mode toggled successfully"});
+
+  } catch (error) {
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+
+});
+
+// <----------- Toggles Font Style for UI -----------------> 
+router.put("/ui-settings/change-font-style/:id/:fontStyle", async (req, res) => {
+  const {id, fontStyle} = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
+
+    if (!user){
+      return res.status(400).send("User not found.");
+    }
+
+    // Toggle the dark mode to its opposite mode.
+    const uiOptions = user.uiOptions;
+
+    if (uiOptions.textFontStyle){
+
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.textFontStyle": fontStyle}});
+      
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+
+    }
+
+    return res.status(200).json({message: "Font style changed successfully"});
+
+  } catch (error) {
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+
+});
+
 
 // <----------------- Edit UI details ----------------------------> 
 // Returns a list of ui attributes for the frontend to receive.
@@ -596,16 +735,6 @@ router.put("/edit-user-ui/:userId", async (req, res) => {
     // Expression to validate hex color
     const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
 
-    // Validate that each of the updated colors are valid.
-    if (!isValidHexColor(updateFields.ribbonColor) 
-      || !isValidHexColor(updateFields.dashboardSideNavBarColor)
-      || !isValidHexColor(updateFields.dashboardBackgroundColor)
-      || !isValidHexColor(updateFields.accentButtonColor)
-      || !isValidHexColor(updateFields.projectPaneBackgroundColor)){
-      return res.status(400).send("Invalid hex code(s) provided in fields.");
-    }
-
-
     if (!user){
       return res.status(400).send("User not found.");
     }
@@ -615,49 +744,64 @@ router.put("/edit-user-ui/:userId", async (req, res) => {
       return res.status(400).json({ error });
     }
 
-    // Determine if the chosen colors for the ribbon, buttons, and dashboard navigation bar have 
-    // enough contrast between the button text color (white) and navigation text color (black).
-    let warning = "";
-    const ribbonColor = new Chromator(updateFields.ribbonColor);
-    const dashboardNavBarColor = new Chromator(updateFields.dashboardSideNavBarColor);
-    const dashboardBackgroundColor = new Chromator(updateFields.dashboardBackgroundColor);
-    const buttonAccentColor = new Chromator(updateFields.accentButtonColor);
-    const projectPaneBackgroundColor = new Chromator(updateFields.projectPaneBackgroundColor);
-    
-    // Immutable text color.
-    const ribbonTextColor = new Chromator("#000000");
-    const buttonTextColor = new Chromator("#FFFFFF");
+    if (!updateFields.useDefaultDarkMode && !updateFields.useDefaultDarkMode){
 
-    // Check for all custom colors if it fails WCAG 2.2 AA Contrast Standards.
-    if (ribbonColor.findContrast(ribbonTextColor) < 4.5){
-      warning = warning.concat("Warning - Contrast between ribbon text color and ribbon background color are insufficient.\n");
-    } 
+      // Validate that each of the updated colors are valid.
+      if (!isValidHexColor(updateFields.ribbonColor) 
+        || !isValidHexColor(updateFields.dashboardSideNavBarColor)
+        || !isValidHexColor(updateFields.dashboardBackgroundColor)
+        || !isValidHexColor(updateFields.accentButtonColor)
+        || !isValidHexColor(updateFields.projectPaneBackgroundColor)){
+        return res.status(400).send("Invalid hex code(s) provided in fields.");
+      }
 
-    if (ribbonColor.findContrast(projectPaneBackgroundColor) < 4.5){
-      warning = warning.concat("Warning - Contrast between ribbon text color and project pane background color are insufficient.\n");
-    } 
+      // Complete custom options.
+      // Determine if the chosen colors for the ribbon, buttons, and dashboard navigation bar have 
+      // enough contrast between the button text color (white) and navigation text color (black).
+      let warning = "";
+      const ribbonColor = new Chromator(updateFields.ribbonColor);
+      const dashboardNavBarColor = new Chromator(updateFields.dashboardSideNavBarColor);
+      const dashboardBackgroundColor = new Chromator(updateFields.dashboardBackgroundColor);
+      const buttonAccentColor = new Chromator(updateFields.accentButtonColor);
+      const projectPaneBackgroundColor = new Chromator(updateFields.projectPaneBackgroundColor);
+      
+      // Immutable text color.
+      const ribbonTextColor = new Chromator("#000000");
+      const buttonTextColor = new Chromator("#FFFFFF");
 
-    if (ribbonColor.findContrast(dashboardBackgroundColor) < 4.5){
-      console.log("ribbonColor.findContrast(dashboardBackgroundColor) = " + ribbonColor.findContrast(dashboardBackgroundColor));
-      warning = warning = warning.concat("Warning - Contrast between ribbon background color and dashboard background color are insufficient.\n");
+      // Check for all custom colors if it fails WCAG 2.2 AA Contrast Standards.
+      if (ribbonColor.findContrast(ribbonTextColor) < 4.5){
+        warning = warning.concat("Warning - Contrast between ribbon text color and ribbon background color are insufficient.\n");
+      } 
+
+      if (ribbonColor.findContrast(projectPaneBackgroundColor) < 4.5){
+        warning = warning.concat("Warning - Contrast between ribbon text color and project pane background color are insufficient.\n");
+      } 
+
+      if (ribbonColor.findContrast(dashboardBackgroundColor) < 4.5){
+        console.log("ribbonColor.findContrast(dashboardBackgroundColor) = " + ribbonColor.findContrast(dashboardBackgroundColor));
+        warning = warning = warning.concat("Warning - Contrast between ribbon background color and dashboard background color are insufficient.\n");
+      }
+
+      if (dashboardNavBarColor.findContrast(dashboardBackgroundColor) < 4.5){
+        warning = warning.concat("Warning - Contrast between ribbon text color and dashboard background color are insufficient.\n");
+      }
+
+      if (buttonAccentColor.findContrast(buttonTextColor) < 4.5){
+        warning = warning.concat("Warning - Contrast between button text color and button background color are insufficient.\n");
+      }
+
+      console.log("Applicable warnings: " + warning);
+      updateFields.alert = warning;
     }
-
-    if (dashboardNavBarColor.findContrast(dashboardBackgroundColor) < 4.5){
-      warning = warning.concat("Warning - Contrast between ribbon text color and dashboard background color are insufficient.\n");
-    }
-
-    if (buttonAccentColor.findContrast(buttonTextColor) < 4.5){
-      warning = warning.concat("Warning - Contrast between button text color and button background color are insufficient.\n");
-    }
-
-    console.log("Applicable warnings: " + warning);
-    updateFields.alert = warning;
 
     // Update UI fields in the database.
     await userCollection.updateOne(
       {_id: new ObjectId(userId), 
         $or:
         [
+          {'uiOptions.useDefaultDarkMode': {$ne: ["uiOptions.useDefaultDarkMode", updateFields.useDefaultDarkMode]}},
+          {'uiOptions.useDefaultHighContrastMode': {$ne: ["uiOptions.useDefaultHighContrastMode", updateFields.useDefaultHighContrastMode]}},
           {'uiOptions.ribbonColor': {$ne: ["uiOptions.ribbonColor", updateFields.ribbonColor]}},
           {'uiOptions.dashboardSideNavBarColor': {$ne: ["uiOptions.dashboardSideNavBarColor", updateFields.dashboardSideNavBarColor]}},
           {'uiOptions.dashboardBackgroundColor': {$ne: ["uiOptions.dashboardBackgroundColor", updateFields.dashboardBackgroundColor]}},
@@ -669,6 +813,8 @@ router.put("/edit-user-ui/:userId", async (req, res) => {
       },
       {$set: 
         {
+          'uiOptions.useDefaultDarkMode': updateFields.useDefaultDarkMode, 
+          'uiOptions.useDefaultHighContrastMode': updateFields.useDefaultHighContrastMode, 
           'uiOptions.ribbonColor': updateFields.ribbonColor, 
           'uiOptions.dashboardSideNavBarColor': updateFields.dashboardSideNavBarColor, 
           'uiOptions.dashboardBackgroundColor': updateFields.dashboardBackgroundColor, 
