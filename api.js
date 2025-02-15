@@ -1010,7 +1010,7 @@ router.post('/createtask', async (req, res) => {
     taskCategoryId: categoryId, // Include the category ID if available.
     prerequisiteTasks: prerequisiteTasks.map((id) => new ObjectId(id)), // Stores all other task ids that this task depends on being done.
     dependentTasks: dependentTasks.map((id) => new ObjectId(id)), // Stores all other task ids who are dependent on this task being done.
-    allPrequisitesDone: true // True ndicates if all of this task's prequisites are done or has no prequisite tasks; false if not all prequisite tasks are completed or otherwise.
+    allPrerequisitesDone: true // True ndicates if all of this task's prequisites are done or has no prequisite tasks; false if not all prequisite tasks are completed or otherwise.
   };
 
     // Insert the new task into the tasks collection
