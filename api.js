@@ -609,7 +609,6 @@ router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
 
       // Disable dark mode.
       const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
-sss
       if (result.modifiedCount === 0){
         console.log("Failed update.");
         return res.status(404).json({message: "Failed to update preferences"});
