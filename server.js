@@ -36,9 +36,9 @@ let client;
 const apiRouter = require("./api");
 app.use("/api", apiRouter);
 
-app.use(express.static(path.join(__dirname, "frontend", "build")));
+app.use(express.static(path.join(__dirname, "frontend", "dist")));
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static("frontend/build"));
+  app.use(express.static("/var/www/Ganttify.xyz/html/dist"));
 }
 
 app.use((req, res, next) => {
@@ -55,7 +55,7 @@ app.use((req, res, next) => {
 });
 
 app.get("*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "frontend", "build", "index.html"));
+  res.sendFile(path.resolve(__dirname, "/var/www/Ganttify.xyz/html", "dist", "index.html"));
 });
 
 app.listen(PORT, () => {
