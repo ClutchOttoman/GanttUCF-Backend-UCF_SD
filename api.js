@@ -545,7 +545,7 @@ router.post("/edit-email", async (req, res) => {
 });
 
 //----------- Retrieve UI Settings Users Endpoint----------------//
-router.post("/ui-settings/get-user-ui", async (req, res) => {
+router.post("/get-user-ui", async (req, res) => {
   const {userId} = req.body;
   let error = "";
   
@@ -587,7 +587,7 @@ router.post("/ui-settings/get-user-ui", async (req, res) => {
 });
 
 // <----------- Toggles Default Dark Mode -----------------> 
-router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
+router.put("/toggle-default-dark-mode/:id", async (req, res) => {
   const {id} = req.params;
   console.log("In dark mode toggle API endpoint");
 
@@ -598,7 +598,7 @@ router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
 
     if (!user){
       console.log("User not found.");
-      return res.status(400).send("User not found.");
+      return res.status(400).json({message: "User not found."});
     }
 
     // Toggle the dark mode to its opposite mode.
@@ -609,6 +609,7 @@ router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
 
       // Disable dark mode.
       const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
+
       if (result.modifiedCount === 0){
         console.log("Failed update.");
         return res.status(404).json({message: "Failed to update preferences"});
@@ -637,7 +638,7 @@ router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
 });
 
 // <----------- Toggles Default High-Contrast Mode -----------------> 
-router.put("/ui-settings/toggle-default-high-contrast-mode/:id", async (req, res) => {
+router.put("/toggle-default-high-contrast-mode/:id", async (req, res) => {
   const {id} = req.params;
 
   try {
@@ -646,7 +647,7 @@ router.put("/ui-settings/toggle-default-high-contrast-mode/:id", async (req, res
     const user = await userCollection.findOne({_id: new ObjectId(id)});
 
     if (!user){
-      return res.status(400).send("User not found.");
+      return res.status(400).json({message: "User not found."});
     }
 
     // Toggle the high contrast mode to its opposite mode.
@@ -684,7 +685,7 @@ router.put("/ui-settings/toggle-default-high-contrast-mode/:id", async (req, res
 });
 
 // <----------- Toggles Font Style for UI -----------------> 
-router.put("/ui-settings/change-font-style/:id/:fontStyle", async (req, res) => {
+router.put("/change-font-style/:id/:fontStyle", async (req, res) => {
   const {id, fontStyle} = req.params;
 
   try {
@@ -693,7 +694,7 @@ router.put("/ui-settings/change-font-style/:id/:fontStyle", async (req, res) => 
     const user = await userCollection.findOne({_id: new ObjectId(id)});
 
     if (!user){
-      return res.status(400).send("User not found.");
+      return res.status(400).json({message: "User not found."});
     }
 
     // Toggle the dark mode to its opposite mode.
@@ -722,7 +723,7 @@ router.put("/ui-settings/change-font-style/:id/:fontStyle", async (req, res) => 
 
 // <----------------- Edit UI details ----------------------------> 
 // Returns a list of ui attributes for the frontend to receive.
-router.put("/edit-user-ui/:userId", async (req, res) => {
+router.put("/:userId", async (req, res) => {
   const { userId } = req.params;
   const updateFields = req.body; // Note: updateFields must be a Object JSON.
   let error = "";
@@ -1368,6 +1369,11 @@ router.post("/readallprequisites", async (req, res) => {
     
     if (task.prerequisiteTasks && task.prerequisiteTasks.length > 0){
       const allPrequisitesOfTask = await taskCollection.find({_id: {$in: task.prerequisiteTasks}}, {taskTitle: 1, progress: 1}).toArray();
+
+      // Process this array into taskTitles and boolean.
+      for (p in allPrequisitesOfTask){
+        
+      }
       return res.status(200).json({allPrequisitesOfTask});
     } else {
       return res.status(200).json({});
