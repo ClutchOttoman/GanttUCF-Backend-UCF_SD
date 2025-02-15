@@ -589,6 +589,7 @@ router.post("/ui-settings/get-user-ui", async (req, res) => {
 // <----------- Toggles Default Dark Mode -----------------> 
 router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
   const {id} = req.params;
+  console.log("In dark mode toggle API endpoint");
 
   try {
     const db = client.db("ganttify");
@@ -608,7 +609,7 @@ router.put("/ui-settings/toggle-default-dark-mode/:id", async (req, res) => {
 
       // Disable dark mode.
       const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
-
+sss
       if (result.modifiedCount === 0){
         console.log("Failed update.");
         return res.status(404).json({message: "Failed to update preferences"});
