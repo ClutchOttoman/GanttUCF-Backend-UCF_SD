@@ -241,6 +241,7 @@ router.get('/verify-email/:email/:token', async (req, res) => {
           accentButtonColor: "#135C91", // all buttons
           textFontStyle: "Inter", // default option - 
           textFontSize: "Default",
+          CVDFilter: "normal",
         } // Object for holding UI options.
       };
 
@@ -572,6 +573,7 @@ router.post("/get-user-ui", async (req, res) => {
         accentButtonColor: "#135C91",
         textFontStyle: "Inter",
         textFontSize: "Default",
+        CVDFilter: "normal",
       });
     }
 
