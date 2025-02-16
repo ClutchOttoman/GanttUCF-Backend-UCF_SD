@@ -720,6 +720,43 @@ router.put("/change-font-style/:id/:fontStyle", async (req, res) => {
 
 });
 
+// <----------- Toggles CVD Filter for UI -----------------> 
+router.put("/change-CVD-filter/:id/:CVDFilter", async (req, res) => {
+  const {id, CVDFilter} = req.params;
+  console.log(CVDFilter)
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const user = await userCollection.findOne({_id: new ObjectId(id)});
+
+    if (!user){
+      return res.status(400).json({message: "User not found."});
+    }
+
+    const uiOptions = user.uiOptions;
+
+    console.log(uiOptions)
+    if (uiOptions.CVDFilter){
+
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.CVDFilter": CVDFilter}});
+      
+      if (result.modifiedCount === 0){
+        console.log("Failed update.");
+        return res.status(404).json({message: "Failed to update preferences"});
+      }
+
+    }
+
+    return res.status(200).json({message: "CVD Filter changed successfully"});
+
+  } catch (error) {
+    error = "Internal server error";
+    return res.status(500).json({error});
+  }
+
+});
+
+
 
 // <----------------- Edit UI details ----------------------------> 
 // Returns a list of ui attributes for the frontend to receive.
