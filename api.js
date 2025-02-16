@@ -2162,30 +2162,11 @@ router.delete("/projects/:id", async (req, res) => {
     // Delete the project from the main collection
     await projectCollection.deleteOne({ _id: new ObjectId(id) });
 
-    const secureTransporter = await createSecureTransporter();
-    if (secureTransporter == null) {return res.status.json({error: 'Secure transporter for email failed to initialize or send.'});}
-
-    // Send an email notification
-    let mailDetails = {
-      from: process.env.USER_EMAIL,
-      to: email, 
-      subject: "Project Moved to Recently Deleted",
-      text: `Hello,\n\nYour project "${project.nameProject}" has been moved to the Recently Deleted Projects collection. It will remain there for 30 days before permanent deletion.\n\nBest regards,\nThe Ganttify Team`,
-    };
-
-    secureTransporter.sendMail(mailDetails, (err, info) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error sending email' });
-      } else {
-        return res.status(200).json({ message: 'Project and associated data moved to deleted collections successfully' });
-      }
-    });
-
-    //res.status(200).json({ message: "Project and associated data moved to deleted collections successfully" });
+    return res.status(200).json({ message: "Project and associated data moved to deleted collections successfully" });
   } catch (error) {
     console.error("Error deleting project:", error);
     error = "Internal server error";
-    res.status(500).json({ error });
+    return res.status(500).json({ error });
   }
 });
 
@@ -2273,11 +2254,11 @@ router.delete("/wipeproject/:id", async (req, res) => {
     // Delete the project from the main collection
     await deletedProjectsCollection.deleteOne({ _id: new ObjectId(id) });
 
-    res.status(200).json({ message: "Project and associated data have been wiped successfully" });
+    return res.status(200).json({ message: "Project and associated data have been wiped successfully" });
   } catch (error) {
     console.error("Error wiping project:", error);
     error = "Internal server error";
-    res.status(500).json({ error });
+    return res.status(500).json({ error });
   }
 });
 
