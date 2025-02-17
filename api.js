@@ -1870,6 +1870,7 @@ router.post("/createproject", async (req, res) => {
       isVisible,
       founderId: new ObjectId(founderId),
       flagDeletion,
+      inviteLink: '',
     };
 
     // Insert project
@@ -3630,8 +3631,8 @@ router.get('/teams/:teamId', async (req, res) => {
   }
 });
 
-router.post('/generate-invite-link', async (req, res) => {
-  const { projectId } = req.body;
+router.post('/generate-invite-link/:projectId', async (req, res) => {
+  const { projectId } = req.params;
 
   if (!projectId) {
     return res.status(400).json({ error: 'Project ID is required' });
