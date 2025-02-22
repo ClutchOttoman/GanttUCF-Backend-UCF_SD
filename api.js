@@ -140,8 +140,6 @@ router.post("/register", async (req, res) => {
 	    timezone: timezone,
 	    accountCreated: new Date(),
 	    isEmailVerified: false, 
-	    // projects: [],
-	    // toDoList: [],
     };
 
     // Insert unverified account into temporary collection.
@@ -229,8 +227,6 @@ router.get('/verify-email/:email/:token', async (req, res) => {
         timezone: timezone,
         accountCreated: existingTempUser.accountCreated,
         isEmailVerified: true, 
-        // projects: [],
-        // toDoList: [],
         uiOptions: {
           useDefaultDarkMode: false,
           useDefaultHighContrastMode: false,
@@ -261,6 +257,33 @@ router.get('/verify-email/:email/:token', async (req, res) => {
 
 });
 
+// For persistent login.
+router.post("/validate-session-login-token", async (req, res) => {
+  console.log("Inside of validate-session-login-token API endpoint.");
+  const {userId, token} = req.body;
+  console.log("userId: " + userId);
+  console.log("token: " + token);
+  let error = "";
+
+  if (!userId || !token) {
+    console.log("Valid session can not be determined.");
+    error = "Valid session can not be determined.";
+    return res.status(400).json({error});
+  } 
+
+  try {
+    const secret = process.env.JWT_SECRET + userId;
+    jwt.verify(token, secret);
+    console.log("Valid session.");
+    return res.status(200).json({message: "Valid session"});
+  } catch {
+    console.log("Invalid or expired token for session.");
+    error = "Invalid or expired token for session.";
+    return res.status(403).json({error});
+  }
+
+});
+
 //-----------------> Login Endpoint <-----------------//
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -280,9 +303,6 @@ router.post("/login", async (req, res) => {
     var enterEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
     const verifiedUser = await userCollection.findOne({ email: enterEmail });
 
-    // console.log("Verified user: \n");
-    // console.log(verifiedUser);
-    
     // If user account is not found in the verified database.
     if (!verifiedUser) {
       error = "Invalid email or password";
@@ -290,7 +310,6 @@ router.post("/login", async (req, res) => {
     }
 
     console.log("Email found");
- 
     const isPasswordValid = await bcrypt.compare(password, verifiedUser.password);
 
   if (!isPasswordValid) {
@@ -298,7 +317,10 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error });
   }
 	  console.log("successful login");
-    const token = jwt.sign({ id: verifiedUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+
+    // Initialize verification token.
+    const secret = process.env.JWT_SECRET + verifiedUser._id.toString();
+    const token = jwt.sign({id: verifiedUser._id}, secret, {expiresIn: "1h"});
 
     // Encrypt data.
     var encryptEmail = await encryptClient.encrypt(verifiedUser.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
@@ -321,8 +343,6 @@ router.post("/login", async (req, res) => {
       organization: encryptOrganization,
       pronouns: encryptPronouns,
       timezone: encryptTimezone,
-      // projects: verifiedUser.projects,
-      // toDoList: verifiedUser.toDoList,
       uiOptions: verifiedUser.uiOptions,
       error: ""
     });
@@ -538,6 +558,55 @@ router.post("/edit-email", async (req, res) => {
     });
 
  
+  } catch (error) {
+    console.error('An error has occurred:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+});
+
+//-----------------> Verify Email Change Endpoint <-----------------//
+// This is sent to the new email adddress to verify the change.
+router.get("/edit-email/:email/:token", async (req, res) => {
+  const {email, token} = req.params;
+
+  try {
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    const unverifiedEmailCollection = db.collection("unverifiedEmails");
+    const user = await userCollection.findOne({_id: new ObjectId(email)});
+
+    // Check that the user exists.
+    if (!user){return res.status(404).send("User does not exist.");}
+
+    try {
+
+      const secret = process.env.JWT_SECRET + user.password;
+      jwt.verify(token, secret);
+      
+      // Retrieve the new email temporarily saved.
+      var tempInfo = await unverifiedEmailCollection.findOne({tempId: user._id});
+
+      // Validate that the temporary email entered exists.
+      if (!tempInfo){
+        return res.status(404).send("Email change information not found.");
+      }
+
+      // console.log("Edit email verify API endpoint; new email = " + tempInfo.email);
+      var newEmail = await encryptClient.encrypt(tempInfo.email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+
+      // Update the email address.
+      await userCollection.updateOne({_id: new ObjectId(email)}, {$set: {email: newEmail}});
+
+      // Delete the temporary save.
+      await unverifiedEmailCollection.deleteOne({tempId: user._id});
+      return res.status(200).json({ message: "Email has been changed successfully." });
+
+    } catch (error){
+      console.log(error);
+      return res.status(401).send("Invalid or expired token.");
+    }
+
   } catch (error) {
     console.error('An error has occurred:', error);
     return res.status(500).json({ error: 'Internal server error' });
