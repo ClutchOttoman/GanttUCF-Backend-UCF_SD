@@ -3149,36 +3149,36 @@ router.post("/searchusers", async (req, res) => {
 
 
 // --------> Search users by email <--------//
-// router.get('/search-user/:email', async (req, res) => {
-//   const { email } = req.params;
+router.get('/search-user/:email', async (req, res) => {
+  const { email } = req.params;
 
-//   if (!email) {
-//     return res.status(400).json({ error: 'Email is required' });
-//   }
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
 
-//   try {
-//     const db = client.db('ganttify');
-//     const userAccounts = db.collection('userAccounts');
+  try {
+    const db = client.db('ganttify');
+    const userAccounts = db.collection('userAccounts');
 
-//     var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
-//     const user = await userAccounts.findOne({ email: queryEncryptedEmail});
+    var queryEncryptedEmail = await encryptClient.encrypt(email, {keyId: new Binary(Buffer.from(keyId, "base64"), 4), algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"});
+    const user = await userAccounts.findOne({ email: queryEncryptedEmail});
 
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-//     res.status(200).json({
-//       _id: user._id,
-//       email: email,
-//       name: user.name,
-//       projects: user.projects || [],
-//     });
+    res.status(200).json({
+      _id: user._id,
+      email: email,
+      name: user.name,
+      projects: user.projects || [],
+    });
 
-//   } catch (error) {
-//     console.error('Error searching for user:', error);
-//     res.status(500).json({ error: 'Internal server error' });
-//   }
-// });
+  } catch (error) {
+    console.error('Error searching for user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 //-> Search Project by Title & Sort by Date Created <-//
 router.post("/search/projects", async (req, res) => {
