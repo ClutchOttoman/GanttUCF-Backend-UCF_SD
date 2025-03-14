@@ -159,9 +159,9 @@ router.post("/register", async (req, res) => {
     let mailDetails = {
       from: process.env.USER_EMAIL,
       to: email,
-      subject: 'Verify Your Ganttify Account',
-      text: `Hello ${name},\n Please verify your Ganttify account by clicking the following link: ${link}`,
-      html: `<p>Hello ${name},</p> <p>Please verify your Ganttify account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
+      subject: 'Verify Your GanttUCF Account',
+      text: `Hello ${name},\n Please verify your GanttUCF account by clicking the following link: ${link}`,
+      html: `<p>Hello ${name},</p> <p>Please verify your GanttUCF account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
     };
 
     secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -382,9 +382,9 @@ router.post('/forgot-password', async (req, res) =>
       let mailDetails = {
         from: process.env.USER_EMAIL,
         to: email,
-        subject: 'Reset Your Ganttify Password',
-        text: `Hello ${user.name},\n We received a request to reset your Ganttify password. Click the link to reset your password: ${link}`,
-        html: `<p>Hello ${user.name},</p> <p>We received a request to reset your Ganttify password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
+        subject: 'Reset Your GanttUCF Password',
+        text: `Hello ${user.name},\n We received a request to reset your GanttUCF password. Click the link to reset your password: ${link}`,
+        html: `<p>Hello ${user.name},</p> <p>We received a request to reset your GanttUCF password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
       };
 
       secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -544,9 +544,9 @@ router.post("/edit-email", async (req, res) => {
     let mailDetails = {
       from: process.env.USER_EMAIL,
       to: email,
-      subject: 'Changing Your Ganttify Email Address',
-      text: `Hello ${user.name},\n We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email: ${link}`,
-      html: `<p>Hello ${user.name},</p> <p>We received a request to change your Ganttify email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Change Email</a>`
+      subject: 'Changing Your GanttUCF Email Address',
+      text: `Hello ${user.name},\n We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email: ${link}`,
+      html: `<p>Hello ${user.name},</p> <p>We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Change Email</a>`
     };
 
     secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -2804,7 +2804,7 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
       let mailDetails = {
         from: process.env.USER_EMAIL,
         to: email,
-        subject: "Ganttify Account Deletion",
+        subject: "GanttUCF Account Deletion",
         text: `Hello,\n\nYour account has been deleted from our system. We are sorry to see you go!\n\n${restoreLink}\n\nIf you did not request this, please ignore this email.`,
         html: `<p>Hello,</p> <p>Your account has been deleted from our system. We are sorry to see you go!\n\nAfter confirming your account deletion, you can recover your account and your associated data within 72 hours by clicking the below link:\n</p> <a href="${restoreLink}" className="btn">Restore Your Account</a> <p>If you did not request this, please ignore this email.</p>`,
       };
@@ -2995,7 +2995,7 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
       let mailDetails = {
         from: process.env.USER_EMAIL,
         to: email, 
-        subject: "Ganttify Account Restored...Welcome Back!",
+        subject: "GanttUCF Account Restored...Welcome Back!",
         text: 'Hello,\n\nYour account has been restored from our system.\n\nWe are glad to see you back!\n\nYou are now able to login again and see your projects.',
       };
 
