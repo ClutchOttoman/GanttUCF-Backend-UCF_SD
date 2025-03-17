@@ -13,10 +13,7 @@ const nodeMailer = require("nodemailer");
 const file = require("fs");
 const path = require('path');
 require("dotenv").config();
-const {google} = require("googleapis");
 const {Chromator} = require("chromator");
-const OAuth2 = google.auth.OAuth2;
-
 const router = express.Router();
 const url = process.env.MONGODB_URI;
 
@@ -50,7 +47,6 @@ let client;
 
 // For CSFLE explicit encryption.
 const encryptClient = new ClientEncryption(client, {keyVaultNamespace, kmsProviders});
-
 const createSecureTransporter = async () => {
 
   try {
@@ -74,6 +70,9 @@ const createSecureTransporter = async () => {
     return null;
   }
 };
+
+const closingEmailText = `From the GanttUCF Team. If you did not intiate this request, please ignore this email. GanttUCF will never ask you for your financial details.`;
+const closingEmailHtml = `<p>From the GanttUCF Team.<br>If you did not intiate this request, please ignore this email.<br>GanttUCF will never ask you for your financial details.</p>`;
 
 //////////////
 // User profile details and account security endpoints.
@@ -160,8 +159,8 @@ router.post("/register", async (req, res) => {
       from: process.env.USER_EMAIL,
       to: email,
       subject: 'Verify Your GanttUCF Account',
-      text: `Hello ${name},\n Please verify your GanttUCF account by clicking the following link: ${link}`,
-      html: `<p>Hello ${name},</p> <p>Please verify your GanttUCF account by clicking the following link:\n</p> <a href="${link}" className="btn">Verify Account</a>`
+      text: `Hello ${name},\n Please verify your GanttUCF account by clicking the following link: ${link}. This request will be valid for 1 hour from the time this request was sent.` + closingEmailText,
+      html: `<p>Hello ${name},</p><p>Please verify your GanttUCF account by clicking the following link:\n</p><a href="${link}" className="btn">Verify Account</a><p>This request will be valid for 1 hour from the time this request was sent.</p>` + closingEmailHtml
     };
 
     secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -383,8 +382,8 @@ router.post('/forgot-password', async (req, res) =>
         from: process.env.USER_EMAIL,
         to: email,
         subject: 'Reset Your GanttUCF Password',
-        text: `Hello ${user.name},\n We received a request to reset your GanttUCF password. Click the link to reset your password: ${link}`,
-        html: `<p>Hello ${user.name},</p> <p>We received a request to reset your GanttUCF password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a>`
+        text: `Hello ${user.name},\n We received a request to reset your GanttUCF password. Click the link to reset your password: ${link}. This request will be valid for 1 hour from the time this request was sent.` + closingEmailText,
+        html: `<p>Hello ${user.name},</p><p>We received a request to reset your GanttUCF password. Click the button to reset your password:\n</p> <a href="${link}" className="btn">Reset Password</a><p>This request will be valid for 1 hour from the time this request was sent.</p>` + closingEmailHtml
       };
 
       secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -399,8 +398,8 @@ router.post('/forgot-password', async (req, res) =>
     }
 
   } catch (error) {
-    console.error('An error has occurred:', error);
-    return res.status(500).json({ error });
+    console.error('An error has occurred: ', error);
+    return res.status(500).json({error: error});
   } 
 });
 
@@ -545,8 +544,8 @@ router.post("/edit-email", async (req, res) => {
       from: process.env.USER_EMAIL,
       to: email,
       subject: 'Changing Your GanttUCF Email Address',
-      text: `Hello ${user.name},\n We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email: ${link}`,
-      html: `<p>Hello ${user.name},</p> <p>We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email:\n</p> <a href="${link}" className="btn">Change Email</a>`
+      text: `Hello ${user.name},\n We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email: ${link}. This request will be valid for 1 hour from the time this request was sent.` + closingEmailText,
+      html: `<p>Hello ${user.name},</p> <p>We received a request to change your GanttUCF email attached to your acccount. Click the link to confirm that you changed your email:\n</p><a href="${link}" className="btn">Change Email</a><p>This request will be valid for 1 hour from the time this request was sent.</p>` + closingEmailHtml
     };
 
     secureTransporter.sendMail(mailDetails, function (err, data) {
@@ -2610,8 +2609,8 @@ router.post("/user/request-delete/:userId", async (req, res) => {
       from: process.env.USER_EMAIL,
       to: email,
       subject: "Confirm Account Deletion",
-      text: `Hello,\n\nTo confirm the deletion of your account, please click the link below:\n\n${link}\n\nIf you did not request this, please ignore this email.`,
-      html: `<p>Hello,</p> <p>To confirm the deletion of your account, please click the link below:\n</p> <a href="${link}" className="btn">Delete Account</a> <p>If you did not request this, please ignore this email.</p>`,
+      text: `Hello,\n\nTo confirm the deletion of your account, please click the link below:\n\n${link}\n\nIf you did not request this, please ignore this email. This request will be valid for 1 hour from the time this request was sent.` + closingEmailText,
+      html: `<p>Hello,</p> <p>To confirm the deletion of your account, please click the link below:\n</p> <a href="${link}" className="btn">Delete Account</a><p>This request will be valid for 1 hour from the time this request was sent.<br>If you did not request this, please ignore this email.</p>` + closingEmailHtml,
     };
 
     secureTransporter.sendMail(mailDetails, (err, info) => {
@@ -2805,8 +2804,8 @@ router.delete("/user/confirm-delete/:userId/:token", async (req, res) => {
         from: process.env.USER_EMAIL,
         to: email,
         subject: "GanttUCF Account Deletion",
-        text: `Hello,\n\nYour account has been deleted from our system. We are sorry to see you go!\n\n${restoreLink}\n\nIf you did not request this, please ignore this email.`,
-        html: `<p>Hello,</p> <p>Your account has been deleted from our system. We are sorry to see you go!\n\nAfter confirming your account deletion, you can recover your account and your associated data within 72 hours by clicking the below link:\n</p> <a href="${restoreLink}" className="btn">Restore Your Account</a> <p>If you did not request this, please ignore this email.</p>`,
+        text: `Hello,\n\nYour account has been deleted from our system. We are sorry to see you go!\n\n${restoreLink}\n\nIf you did not request this, please ignore this email.` + closingEmailText,
+        html: `<p>Hello,</p> <p>Your account has been deleted from our system. We are sorry to see you go!\n\nAfter confirming your account deletion, you can recover your account and your associated data within 72 hours by clicking the below link:\n</p> <a href="${restoreLink}" className="btn">Restore Your Account</a> <p>If you did not request this, please ignore this email.</p>` + closingEmailHtml,
       };
 
       secureTransporter.sendMail(mailDetails, (err, info) => {
@@ -2996,7 +2995,7 @@ router.post("/user/restore-account/:userId/:token", async (req, res) => {
         from: process.env.USER_EMAIL,
         to: email, 
         subject: "GanttUCF Account Restored...Welcome Back!",
-        text: 'Hello,\n\nYour account has been restored from our system.\n\nWe are glad to see you back!\n\nYou are now able to login again and see your projects.',
+        text: 'Hello,\n\nYour account has been restored from our system.\n\nWe are glad to see you back!\n\nYou are now able to login again and see your projects.\n' + closingEmailText,
       };
 
       secureTransporter.sendMail(mailDetails, (err, info) => {
