@@ -3784,4 +3784,32 @@ router.get("/fetchTask/:id", async (req, res) => {
   }	
 });
 
+//Updates announcement modal
+router.post("/dashboard/account", async (req, res) => {
+  const {text} = req.body;
+  console.log(text)
+  try{
+    const db = client.db("ganttify");
+    const announceCollection = db.collection("Announcement");
+    await announceCollection.findOneAndUpdate({ _id: new ObjectId('67e188650c26c0c167bb043d') }, {$set: {text: text}});
+    
+  } catch (error) {
+    console.error("Error fetching announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
+
+router.get("/dashboard/account", async (req, res) => {
+  try{
+    const db = client.db("ganttify");
+    const announceCollection = db.collection("Announcement");
+    const announcement = await announceCollection.findOne({ _id: new ObjectId('67e188650c26c0c167bb043d') });
+
+    res.status(200).json({ text: announcement.text });
+    
+  } catch (error) {
+    console.error("Error fetching announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
 module.exports = router;
