@@ -182,6 +182,8 @@ router.post("/register", async (req, res) => {
 router.get('/verify-email/:email/:token', async (req, res) => {
   // NOTE: Email should already be an encrypted parameter.
   const { email, token } = req.params;
+  console.log(email)
+  console.log(token)
 
   try {
 
@@ -3786,12 +3788,12 @@ router.get("/fetchTask/:id", async (req, res) => {
 
 //Updates announcement modal
 router.post("/dashboard/account", async (req, res) => {
-  const {text} = req.body;
+  const {text, title} = req.body;
   console.log(text)
   try{
     const db = client.db("ganttify");
     const announceCollection = db.collection("Announcement");
-    await announceCollection.findOneAndUpdate({ _id: new ObjectId('67e188650c26c0c167bb043d') }, {$set: {text: text}});
+    await announceCollection.findOneAndUpdate({ _id: new ObjectId('67e188650c26c0c167bb043d') }, {$set: {text: text, title: title}});
     
   } catch (error) {
     console.error("Error fetching announcement:", error);
@@ -3805,7 +3807,7 @@ router.get("/dashboard/account", async (req, res) => {
     const announceCollection = db.collection("Announcement");
     const announcement = await announceCollection.findOne({ _id: new ObjectId('67e188650c26c0c167bb043d') });
 
-    res.status(200).json({ text: announcement.text });
+    res.status(200).json({ text: announcement.text, title: announcement.title});
     
   } catch (error) {
     console.error("Error fetching announcement:", error);
