@@ -649,26 +649,17 @@ router.post("/get-user-ui", async (req, res) => {
 });
 
 // <----------- Toggles Themes -----------------> 
-router.put("/toggle-theme/:id", async (req, res) => {
-  const {id} = req.params;
-  const {mode} = req.body;
+router.put("/toggle-theme/:id/:mode", async (req, res) => {
+  const {id, mode} = req.params;
   console.log(mode)
 
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
-
-    if (!user){
-      console.log("User not found.");
-      return res.status(400).json({message: "User not found."});
-    }
 
   //Toggle modes.
     const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.theme": mode}});
-
     if (result.modifiedCount === 0){
-      console.log("Failed update.");
       return res.status(404).json({message: "Failed to update preferences"});
     }
 
@@ -702,7 +693,6 @@ router.put("/change-font-style/:id/:fontStyle", async (req, res) => {
       const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.fontStyle": fontStyle}});
       
       if (result.modifiedCount === 0){
-        console.log("Failed update.");
         return res.status(404).json({message: "Failed to update preferences"});
       }
 
