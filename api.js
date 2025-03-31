@@ -182,6 +182,8 @@ router.post("/register", async (req, res) => {
 router.get('/verify-email/:email/:token', async (req, res) => {
   // NOTE: Email should already be an encrypted parameter.
   const { email, token } = req.params;
+  console.log(email)
+  console.log(token)
 
   try {
 
@@ -228,13 +230,7 @@ router.get('/verify-email/:email/:token', async (req, res) => {
         accountCreated: existingTempUser.accountCreated,
         isEmailVerified: true, 
         uiOptions: {
-          useDefaultDarkMode: false,
-          useDefaultHighContrastMode: false,
-          ribbonColor: "#FDDC87",
-          dashboardSideNavBarColor: "#DC6B2C",
-          dashboardBackgroundColor: "#FFFFFF", // 
-          projectPaneBackgroundColor: "#FFFFFF", // default option
-          accentButtonColor: "#135C91", // all buttons
+          theme:"default",
           textFontStyle: "Inter", // default option - 
           textFontSize: "Default",
           CVDFilter: "normal",
@@ -344,6 +340,7 @@ router.post("/login", async (req, res) => {
       pronouns: encryptPronouns,
       timezone: encryptTimezone,
       uiOptions: verifiedUser.uiOptions,
+      test: "test",
       error: ""
     });
 
@@ -633,13 +630,7 @@ router.post("/get-user-ui", async (req, res) => {
     if (!user.uiOptions){
       console.log("Failed to load custom UI options.");
       return res.status(201).json({
-        useDefaultDarkMode: false,
-        useDefaultHighContrastMode: false,
-        ribbonColor: "#FDDC87", // all instances or classnames. 
-        dashboardSideNavBarColor: "#DC6B2C",
-        dashboardBackgroundColor: "#FFFFFF",
-        projectPaneBackgroundColor: "#FFFFFF",
-        accentButtonColor: "#135C91",
+        theme: "default",
         textFontStyle: "Inter",
         textFontSize: "Default",
         CVDFilter: "normal",
@@ -657,98 +648,23 @@ router.post("/get-user-ui", async (req, res) => {
   }
 });
 
-// <----------- Toggles Default Dark Mode -----------------> 
-router.put("/toggle-default-dark-mode/:id", async (req, res) => {
-  const {id} = req.params;
-  console.log("In dark mode toggle API endpoint");
+// <----------- Toggles Themes -----------------> 
+router.put("/toggle-theme/:id/:mode", async (req, res) => {
+  const {id, mode} = req.params;
+  console.log(mode)
 
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
 
-    if (!user){
-      console.log("User not found.");
-      return res.status(400).json({message: "User not found."});
+  //Toggle modes.
+    const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.theme": mode}});
+    if (result.modifiedCount === 0){
+      return res.status(404).json({message: "Failed to update preferences"});
     }
 
-    // Toggle the dark mode to its opposite mode.
-    const uiOptions = user.uiOptions;
-
-    // Toggle the dark mode to its opposite mode.
-    if (uiOptions.useDefaultDarkMode){
-
-      // Disable dark mode.
-      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
-
-      if (result.modifiedCount === 0){
-        console.log("Failed update.");
-        return res.status(404).json({message: "Failed to update preferences"});
-      }
-
-    } else {
-
-      // Enable dark mode.
-      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": true, "uiOptions.useDefaultHighContrastMode": false}});
-
-      if (result.modifiedCount === 0){
-        console.log("Failed update.");
-        return res.status(404).json({message: "Failed to update preferences"});
-      }
-
-    }
-
-    return res.status(200).json({message: "Dark mode toggled successfully"});
- 
   } catch (error) {
     console.error(error);
-    error = "Internal server error";
-    return res.status(500).json({error});
-  }
-
-});
-
-// <----------- Toggles Default High-Contrast Mode -----------------> 
-router.put("/toggle-default-high-contrast-mode/:id", async (req, res) => {
-  const {id} = req.params;
-
-  try {
-    const db = client.db("ganttify");
-    const userCollection = db.collection("userAccounts");
-    const user = await userCollection.findOne({_id: new ObjectId(id)});
-
-    if (!user){
-      return res.status(400).json({message: "User not found."});
-    }
-
-    // Toggle the high contrast mode to its opposite mode.
-    const uiOptions = user.uiOptions;
-
-    // Toggle to the opposite boolean.
-    if (uiOptions.useDefaultHighContrastMode){
-
-      // Disable high contrast.
-      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": false}});
-    
-      if (result.modifiedCount === 0){
-        console.log("Failed update.");
-        return res.status(404).json({message: "Failed to update preferences"});
-      }
-
-    } else {
-
-      // Enable high contrast.
-      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.useDefaultDarkMode": false, "uiOptions.useDefaultHighContrastMode": true}});
-
-      if (result.modifiedCount === 0){
-        console.log("Failed update.");
-        return res.status(404).json({message: "Failed to update preferences"});
-      }
-    }
-
-    return res.status(200).json({message: "High contrast mode toggled successfully"});
-
-  } catch (error) {
     error = "Internal server error";
     return res.status(500).json({error});
   }
@@ -770,13 +686,13 @@ router.put("/change-font-style/:id/:fontStyle", async (req, res) => {
 
     // Toggle the dark mode to its opposite mode.
     const uiOptions = user.uiOptions;
+  
+    console.log(uiOptions.fontStyle)
+    if (uiOptions.fontStyle){
 
-    if (uiOptions.textFontStyle){
-
-      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.textFontStyle": fontStyle}});
+      const result = await userCollection.updateOne({_id: new ObjectId(id)}, {$set: {"uiOptions.fontStyle": fontStyle}});
       
       if (result.modifiedCount === 0){
-        console.log("Failed update.");
         return res.status(404).json({message: "Failed to update preferences"});
       }
 
@@ -829,16 +745,20 @@ router.put("/change-CVD-filter/:id/:CVDFilter", async (req, res) => {
 
 // <----------------- Edit UI details ----------------------------> 
 // Returns a list of ui attributes for the frontend to receive.
-router.put("/:userId", async (req, res) => {
+router.put("/update-custom/:userId", async (req, res) => {
   const { userId } = req.params;
-  const updateFields = req.body; // Note: updateFields must be a Object JSON.
+  const custom = req.body; // Note: updateFields must be a Object JSON.
   let error = "";
+
+  console.log(custom)
   
   try {
     const db = client.db("ganttify");
     const userCollection = db.collection("userAccounts");
     const user = await userCollection.findOne({_id: new ObjectId(userId)});
-
+    const currentUiOptions = user ? user.uiOptions : {};
+    
+    console.log(user.uiOptions)
     // Expression to validate hex color
     const isValidHexColor = (color) => /^#([0-9A-F]{3}){1,2}$/i.test(color);
 
@@ -846,19 +766,20 @@ router.put("/:userId", async (req, res) => {
       return res.status(400).send("User not found.");
     }
 
-    if (!Object.keys(updateFields).length){
+    if (!Object.keys(custom).length){
       error = "No fields provided to update";
       return res.status(400).json({ error });
     }
 
-    if (!updateFields.useDefaultDarkMode && !updateFields.useDefaultDarkMode){
+    /*
+    if (!custom.useDefaultDarkMode && !custom.useDefaultDarkMode){
 
       // Validate that each of the updated colors are valid.
-      if (!isValidHexColor(updateFields.ribbonColor) 
-        || !isValidHexColor(updateFields.dashboardSideNavBarColor)
-        || !isValidHexColor(updateFields.dashboardBackgroundColor)
-        || !isValidHexColor(updateFields.accentButtonColor)
-        || !isValidHexColor(updateFields.projectPaneBackgroundColor)){
+      if (!isValidHexColor(custom.ribbonColor) 
+        || !isValidHexColor(custom.dashboardSideNavBarColor)
+        || !isValidHexColor(custom.dashboardBackgroundColor)
+        || !isValidHexColor(custom.accentButtonColor)
+        || !isValidHexColor(custom.projectPaneBackgroundColor)){
         return res.status(400).send("Invalid hex code(s) provided in fields.");
       }
 
@@ -866,11 +787,11 @@ router.put("/:userId", async (req, res) => {
       // Determine if the chosen colors for the ribbon, buttons, and dashboard navigation bar have 
       // enough contrast between the button text color (white) and navigation text color (black).
       let warning = "";
-      const ribbonColor = new Chromator(updateFields.ribbonColor);
-      const dashboardNavBarColor = new Chromator(updateFields.dashboardSideNavBarColor);
-      const dashboardBackgroundColor = new Chromator(updateFields.dashboardBackgroundColor);
-      const buttonAccentColor = new Chromator(updateFields.accentButtonColor);
-      const projectPaneBackgroundColor = new Chromator(updateFields.projectPaneBackgroundColor);
+      const ribbonColor = new Chromator(custom.ribbonColor);
+      const dashboardNavBarColor = new Chromator(custom.dashboardSideNavBarColor);
+      const dashboardBackgroundColor = new Chromator(custom.dashboardBackgroundColor);
+      const buttonAccentColor = new Chromator(custom.accentButtonColor);
+      const projectPaneBackgroundColor = new Chromator(custom.projectPaneBackgroundColor);
       
       // Immutable text color.
       const ribbonTextColor = new Chromator("#000000");
@@ -899,42 +820,26 @@ router.put("/:userId", async (req, res) => {
       }
 
       console.log("Applicable warnings: " + warning);
-      updateFields.alert = warning;
+      custom.alert = warning;
     }
+
+    */
 
     // Update UI fields in the database.
     await userCollection.updateOne(
-      {_id: new ObjectId(userId), 
-        $or:
-        [
-          {'uiOptions.useDefaultDarkMode': {$ne: ["uiOptions.useDefaultDarkMode", updateFields.useDefaultDarkMode]}},
-          {'uiOptions.useDefaultHighContrastMode': {$ne: ["uiOptions.useDefaultHighContrastMode", updateFields.useDefaultHighContrastMode]}},
-          {'uiOptions.ribbonColor': {$ne: ["uiOptions.ribbonColor", updateFields.ribbonColor]}},
-          {'uiOptions.dashboardSideNavBarColor': {$ne: ["uiOptions.dashboardSideNavBarColor", updateFields.dashboardSideNavBarColor]}},
-          {'uiOptions.dashboardBackgroundColor': {$ne: ["uiOptions.dashboardBackgroundColor", updateFields.dashboardBackgroundColor]}},
-          {'uiOptions.projectPaneBackgroundColor': {$ne: ["uiOptions.projectPaneBackgroundColor", updateFields.projectPaneBackgroundColor]}},
-          {'uiOptions.accentButtonColor': {$ne: ["uiOptions.accentButtonColor", updateFields.accentButtonColor]}},
-          {'uiOptions.textFontStyle': {$ne: ["uiOptions.textFontStyle", updateFields.textFontStyle]}},
-          {'uiOptions.textFontSize': {$ne: ["uiOptions.textFontSize", updateFields.textFontSize]}}
-        ]
-      },
-      {$set: 
-        {
-          'uiOptions.useDefaultDarkMode': updateFields.useDefaultDarkMode, 
-          'uiOptions.useDefaultHighContrastMode': updateFields.useDefaultHighContrastMode, 
-          'uiOptions.ribbonColor': updateFields.ribbonColor, 
-          'uiOptions.dashboardSideNavBarColor': updateFields.dashboardSideNavBarColor, 
-          'uiOptions.dashboardBackgroundColor': updateFields.dashboardBackgroundColor, 
-          'uiOptions.projectPaneBackgroundColor': updateFields.projectPaneBackgroundColor,
-          'uiOptions.accentButtonColor': updateFields.accentButtonColor,
-          'uiOptions.textFontStyle': updateFields.textFontStyle,
-          'uiOptions.textFontSize': updateFields.textFontSize
-        },
-      } 
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          "uiOptions": {
+            ...currentUiOptions,
+            ...custom
+          }
+        }
+      }
     );
 
     // Return the updated json when done with applicable warnings.
-    return res.status(200).json(updateFields);
+    return res.status(200).json(custom);
  
   } catch (error) {
     console.error('An error has occurred:', error);
@@ -3871,4 +3776,32 @@ router.get("/fetchTask/:id", async (req, res) => {
   }	
 });
 
+//Updates announcement modal
+router.post("/dashboard/account", async (req, res) => {
+  const {text, title} = req.body;
+  console.log(text)
+  try{
+    const db = client.db("ganttify");
+    const announceCollection = db.collection("Announcement");
+    await announceCollection.findOneAndUpdate({ _id: new ObjectId('67e188650c26c0c167bb043d') }, {$set: {text: text, title: title}});
+    
+  } catch (error) {
+    console.error("Error fetching announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
+
+router.get("/dashboard/account", async (req, res) => {
+  try{
+    const db = client.db("ganttify");
+    const announceCollection = db.collection("Announcement");
+    const announcement = await announceCollection.findOne({ _id: new ObjectId('67e188650c26c0c167bb043d') });
+
+    res.status(200).json({ text: announcement.text, title: announcement.title});
+    
+  } catch (error) {
+    console.error("Error fetching announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
 module.exports = router;
