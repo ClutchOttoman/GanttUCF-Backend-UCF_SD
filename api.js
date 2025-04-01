@@ -1,5 +1,5 @@
 // CSFLE adapted from https://github.com/mongodb/docs/tree/master/source/includes/generated/in-use-encryption/csfle/node/local/reader/
-const GANTTIFY_IP = "www.ganttify.xyz";
+const GANTTIFY_IP = "www.ganttifyucf.com";
 const LOCALHOST = `http://localhost:5173`;
 const GANTTIFY_LINK = (process.env.NODE_ENV === 'dev') ? LOCALHOST : `https://`+GANTTIFY_IP;
 if (process.env.NODE_ENV === 'dev'){
