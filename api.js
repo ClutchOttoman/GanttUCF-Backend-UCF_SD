@@ -234,7 +234,8 @@ router.get('/verify-email/:email/:token', async (req, res) => {
           textFontStyle: "Inter", // default option - 
           textFontSize: "Default",
           CVDFilter: "normal",
-        } // Object for holding UI options.
+        },// Object for holding UI options.
+        showAnnouncement: true,
       };
 
       // Add verified user to the database and remove it from the temporary account.
@@ -340,6 +341,7 @@ router.post("/login", async (req, res) => {
       pronouns: encryptPronouns,
       timezone: encryptTimezone,
       uiOptions: verifiedUser.uiOptions,
+      showAnnouncement: verifiedUser.showAnnouncement,
       test: "test",
       error: ""
     });
@@ -3791,6 +3793,23 @@ router.post("/dashboard/account", async (req, res) => {
   }	
 });
 
+
+//Sets show annoucements to true for all users when pressing upload.
+router.post("/dashboard/account/announce", async (req, res) => {
+  const {text, title} = req.body;
+  console.log(text)
+  try{
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    await userCollection.updateMany({},{$set: {showAnnouncement: true}});
+    
+  } catch (error) {
+    console.error("Error fetching announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
+
+//Gets announcement information
 router.get("/dashboard/account", async (req, res) => {
   try{
     const db = client.db("ganttify");
@@ -3804,4 +3823,22 @@ router.get("/dashboard/account", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }	
 });
+
+//Makes announcement not visible to user until next announcement.
+router.put("/announcement/hide/:id", async (req, res) => {
+  const {id} = req.params;
+  console.log(id)
+  try{
+    const db = client.db("ganttify");
+    const userCollection = db.collection("userAccounts");
+    await userCollection.findOneAndUpdate({ _id: new ObjectId(id) }, {$set: {showAnnouncement: false}});
+
+    res.status(200).json({ msg: "Successfully hid announcement"});
+    
+  } catch (error) {
+    console.error("Error hiding announcement:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }	
+});
+
 module.exports = router;
