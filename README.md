@@ -5,7 +5,7 @@
 - *Documented GitHub contributions are not equivalent to actual contributions from team members*
 
 # Third-Party Libraries/Modules Used:
--[Jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) (MIT License)
+- [Jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) (MIT License)
 - [bcrypt](https://github.com/kelektiv/node.bcrypt.js) (MIT License)
 - [nodemailer](https://github.com/nodemailer/nodemailer) (MIT License)
 - [express](https://github.com/expressjs/express) (MIT License)
