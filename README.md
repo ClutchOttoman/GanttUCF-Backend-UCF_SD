@@ -14,3 +14,4 @@
 - [mongosh](https://github.com/mongodb-js/mongosh) (Apache-2.0 License)
 - [googleapis](https://github.com/googleapis/google-api-nodejs-client) (Apache-2.0 License)
 - [chromator](https://github.com/TomasEng/Chromator) (MIT License)
+- [require-in-the-middle](https://github.com/nodejs/require-in-the-middle) (MIT License)
