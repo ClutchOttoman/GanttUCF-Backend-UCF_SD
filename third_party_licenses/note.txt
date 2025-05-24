@@ -1,0 +1,1 @@
+googleapis, mongodb and monogsh are all under Apache License 2.0.
